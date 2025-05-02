@@ -6,7 +6,7 @@ from typing import Optional
 
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 from yt_dlp import YoutubeDL
 
 intents = discord.Intents.default()
@@ -25,7 +25,6 @@ YDL_OPTIONS = {
     'quiet': True,
     'default_search': 'auto',
     'noplaylist': True,
-    'extract_flat': 'in_playlist',
 }
 FFMPEG_OPTIONS = {
     'options': '-vn'
@@ -66,16 +65,17 @@ class AudioController:
         guild_audio = self.get_guild_audio(interaction.guild.id)
         try:
             info = await self._extract_info(url)
-            song = Song(info["url"], info["title"])
+            formats = info.get("formats")
+            audio_url = next((f["url"] for f in formats if f.get("acodec") != "none"), info["url"])
+            song = Song(audio_url, info["title"])
             guild_audio.queue.append(song)
-            await interaction.response.send_message(f"🎶 Added to queue: **{song.title}**", ephemeral=True)
             if not guild_audio.voice_client:
                 await self._connect_to_voice(interaction)
             if not guild_audio.playing_task:
                 guild_audio.playing_task = asyncio.create_task(self._play_loop(interaction.guild.id))
         except Exception as e:
             logging.error("Error enqueueing song", exc_info=e)
-            await interaction.response.send_message("❌ Failed to add song. Check the URL or try again later.", ephemeral=True)
+            await interaction.followup.send("❌ فشل في تشغيل الرابط. جرّب رابطًا آخر.", ephemeral=True)
 
     async def _connect_to_voice(self, interaction: discord.Interaction):
         if not interaction.user.voice or not interaction.user.voice.channel:
@@ -106,7 +106,7 @@ class AudioController:
     async def _start_disconnect_timer(self, guild_id: int):
         await asyncio.sleep(60)
         guild_audio = self.get_guild_audio(guild_id)
-        if guild_audio.voice_client and not guild_audio.voice_client.channel.members or len(guild_audio.voice_client.channel.members) == 1:
+        if guild_audio.voice_client and (len(guild_audio.voice_client.channel.members) == 1):
             await guild_audio.voice_client.disconnect()
             guild_audio.voice_client = None
             await self._update_panel(guild_id)
@@ -179,9 +179,10 @@ async def on_ready():
         logging.error("Failed to sync commands", exc_info=e)
 
 
-@bot.tree.command(name="play", description="Play audio from a YouTube URL")
-@app_commands.describe(url="YouTube URL")
+@bot.tree.command(name="play", description="تشغيل رابط يوتيوب")
+@app_commands.describe(url="رابط اليوتيوب")
 async def play(interaction: discord.Interaction, url: str):
+    await interaction.response.defer()
     await controller.enqueue(interaction, url)
     guild_audio = controller.get_guild_audio(interaction.guild.id)
     if not guild_audio.panel_message:
@@ -191,16 +192,17 @@ async def play(interaction: discord.Interaction, url: str):
         guild_audio.panel_message = panel_msg
 
 
-@bot.tree.command(name="queue", description="Show current music queue")
+@bot.tree.command(name="queue", description="عرض قائمة الانتظار الحالية")
 async def queue(interaction: discord.Interaction):
     guild_audio = controller.get_guild_audio(interaction.guild.id)
     if not guild_audio.queue:
-        await interaction.response.send_message("📭 Queue is empty.", ephemeral=True)
+        await interaction.response.send_message("📭 قائمة الانتظار فارغة.", ephemeral=True)
         return
-    embed = discord.Embed(title="🎶 Music Queue")
+    embed = discord.Embed(title="🎶 قائمة الانتظار")
     for idx, song in enumerate(guild_audio.queue, 1):
         embed.add_field(name=f"{idx}.", value=song.title, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 bot.run(TOKEN)
+
