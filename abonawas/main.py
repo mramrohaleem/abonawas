@@ -203,4 +203,4 @@ async def queue(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-bot.run(MTMxNTc5MjM3ODE2NjI0NzUzNA.GA38ed.9Bdz12NjpcwmR2SCH4JTCUq7xysTGkhdwwtkVs)
+bot.run(TOKEN)
