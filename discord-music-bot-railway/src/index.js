@@ -1,4 +1,6 @@
 require('dotenv').config()
+console.log('>> discord-player version:', require('discord-player/package.json').version)
+
 const fs = require('fs')
 const path = require('path')
 const { Client, Collection, GatewayIntentBits } = require('discord.js')
@@ -13,7 +15,7 @@ const client = new Client({
 
 // In-memory collections
 client.commands = new Collection()
-client.buttons  = new Collection()
+client.buttons = new Collection()
 client.embedMessages = new Collection()
 
 // Load slash commands
@@ -28,7 +30,7 @@ for (const file of fs.readdirSync(path.join(__dirname, 'buttons')).filter(f => f
   client.buttons.set(btn.customId, btn)
 }
 
-// Initialize player
+// Initialize music player
 client.player = new Player(client, {
   ytdlOptions: { quality: 'highestaudio', highWaterMark: 1 << 25 }
 })
@@ -39,7 +41,7 @@ client.once('ready', async () => {
   const { Routes } = require('discord.js')
   const token = process.env.DISCORD_TOKEN
   const clientId = process.env.CLIENT_ID
-  const guildId  = process.env.GUILD_ID
+  const guildId = process.env.GUILD_ID
   const rest = new REST({ version: '10' }).setToken(token)
 
   const route = process.env.NODE_ENV === 'production'
@@ -64,9 +66,11 @@ client.on('interactionCreate', async interaction => {
   } catch (err) {
     console.error(err)
     const reply = { content: '❌ An error occurred', ephemeral: true }
-    interaction.replied || interaction.deferred
-      ? interaction.followUp(reply)
-      : interaction.reply(reply)
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(reply)
+    } else {
+      await interaction.reply(reply)
+    }
   }
 })
 
