@@ -88,8 +88,12 @@ class AudioController:
     async def _extract_info(self, url: str):
         loop = asyncio.get_event_loop()
         ydl_opts = YDL_OPTIONS.copy()
-        if os.path.exists("cookies.txt"):
-            ydl_opts["cookiefile"] = "cookies.txt"
+        cookie_path = "/app/cookies.txt"
+        if os.path.exists(cookie_path):
+            ydl_opts["cookiefile"] = cookie_path
+            logging.info("✅ Using cookies.txt for yt-dlp.")
+        else:
+            logging.warning("⚠️ cookies.txt not found; continuing without it.")
         with YoutubeDL(ydl_opts) as ydl:
             return await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
 
@@ -209,4 +213,3 @@ async def queue(interaction: discord.Interaction):
 
 
 bot.run(TOKEN)
-
