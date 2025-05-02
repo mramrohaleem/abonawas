@@ -69,6 +69,7 @@ class AudioController:
             audio_url = next((f["url"] for f in formats if f.get("acodec") != "none"), info["url"])
             song = Song(audio_url, info["title"])
             guild_audio.queue.append(song)
+            await interaction.followup.send(f"🎶 أضيف إلى القائمة: **{song.title}**", ephemeral=True)
             if not guild_audio.voice_client:
                 await self._connect_to_voice(interaction)
             if not guild_audio.playing_task:
@@ -86,7 +87,10 @@ class AudioController:
 
     async def _extract_info(self, url: str):
         loop = asyncio.get_event_loop()
-        with YoutubeDL(YDL_OPTIONS) as ydl:
+        ydl_opts = YDL_OPTIONS.copy()
+        if os.path.exists("cookies.txt"):
+            ydl_opts["cookiefile"] = "cookies.txt"
+        with YoutubeDL(ydl_opts) as ydl:
             return await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
 
     async def _play_loop(self, guild_id: int):
