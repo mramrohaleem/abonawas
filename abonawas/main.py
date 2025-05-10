@@ -46,7 +46,6 @@ class GuildAudioState:
         await self.queue.put(url)
 
     async def _extract_info(self, url: str):
-        # نحظر روابط يوتيوب فقط
         if "youtube.com" in url or "youtu.be" in url:
             raise ValueError("❌ يوتيوب غير مدعوم حاليًا. جرّب رابطًا من SoundCloud أو Vimeo أو موقع آخر.")
 
@@ -96,8 +95,7 @@ async def play(interaction: discord.Interaction, url: str):
 
     try:
         await state.enqueue(url)
-        await interaction.followup.send(f"✅ تم إضافة الرابط إلى قائمة الانتظار:
-{url}")
+        await interaction.followup.send(f"✅ تم إضافة الرابط إلى قائمة الانتظار:\n{url}")
     except ValueError as e:
         await interaction.followup.send(str(e))
     except Exception:
@@ -128,4 +126,5 @@ if not TOKEN:
     logging.error("DISCORD_TOKEN environment variable not set.")
 else:
     bot.run(TOKEN)
+
 
