@@ -2,7 +2,10 @@ import { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, Bu
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } from '@discordjs/voice';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import sodium from 'libsodium-wrappers';
+
 dotenv.config();
+await sodium.ready;
 
 const client = new Client({
     intents: [
@@ -13,7 +16,7 @@ const client = new Client({
 });
 
 const token = process.env.DISCORD_TOKEN;
-const queues = new Map(); // guildId => { queue: [], player, connection, controlMessage, timeout }
+const queues = new Map();
 
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
