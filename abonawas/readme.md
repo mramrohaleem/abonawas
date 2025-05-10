@@ -1,20 +1,10 @@
-# Discord Music Bot (Railway Deploy)
+# Quran Discord Bot
 
-This is a production-ready Discord music bot written in Python 3.12.
+بوت ديسكورد يشغل تلاوات القرآن من SoundCloud داخل القنوات الصوتية، مع تحكم تفاعلي.
 
-## 🚀 Features
-- Play audio from YouTube URLs
-- Per-guild music queues
-- One persistent control panel per guild with buttons
-- Auto-disconnect after 60s idle
-- Slash commands for control
+## النشر على Railway
 
-## 📦 Deploy to Railway
-
-1. Create a new Railway project.
-2. Add the following environment variable:
-   - `DISCORD_TOKEN` = your bot token
-3. Deploy the project.
-   - Railway auto-installs from `requirements.txt` and runs `Procfile`.
-
-You're done! Invite your bot and use `/play` in any server with voice channels.
+1. أنشئ مشروع جديد على [Railway](https://railway.app).
+2. أضف متغير البيئة `DISCORD_TOKEN` بقيمة رمز البوت الخاص بك.
+3. ارفع الملفات.
+4. سيتم تشغيل البوت تلقائيًا باستخدام `Procfile`.
