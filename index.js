@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, Events } from 'discord.js';
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType } from '@discordjs/voice';
+import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } from '@discordjs/voice';
 import fetch from 'node-fetch';
+import { Readable } from 'stream';
 import dotenv from 'dotenv';
 import sodium from 'libsodium-wrappers';
 
@@ -166,17 +167,16 @@ async function playTrack(guildId) {
             return;
         }
 
-        const stream = res.body;
+        const arrayBuffer = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const stream = Readable.from(buffer);
 
-        const resource = createAudioResource(stream, {
-            inputType: StreamType.Arbitrary
-        });
-
+        const resource = createAudioResource(stream);
         q.player.play(resource);
-        console.log(`▶️ Now playing with headers: ${track.url}`);
+        console.log(`▶️ Now playing from buffer: ${track.url}`);
         updateControl(guildId);
     } catch (err) {
-        console.error('❌ فشل في تشغيل الرابط (fetch with headers):', err);
+        console.error('❌ فشل في تشغيل الرابط (buffered):', err);
     }
 }
 
@@ -221,3 +221,4 @@ async function updateControl(guildId) {
 })();
 
 client.login(token);
+
