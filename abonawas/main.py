@@ -1,11 +1,3 @@
-import discord.opus
-try:
-    import discord_ext_opus
-    discord_ext_opus.load()
-except Exception as e:
-    print("❌ فشل تحميل Opus:", e)
-
-
 
 import asyncio
 import logging
