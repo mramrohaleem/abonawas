@@ -1,6 +1,5 @@
-
 import { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, REST, Routes } from 'discord.js';
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, getVoiceConnection, VoiceConnectionStatus, entersState } from '@discordjs/voice';
+import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, getVoiceConnection, VoiceConnectionStatus } from '@discordjs/voice';
 import play from 'play-dl';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -26,7 +25,7 @@ const commands = [
         description: 'شغّل تلاوة من رابط SoundCloud',
         options: [{
             name: 'url',
-            type: 3, // STRING
+            type: 3,
             description: 'رابط SoundCloud',
             required: true
         }]
@@ -46,7 +45,6 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'play') {
             const url = interaction.options.getString('url');
-            if (!play.is_expired()) await play.refreshToken();
 
             let info;
             try {
