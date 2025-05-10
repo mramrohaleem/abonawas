@@ -1,4 +1,3 @@
-
 import { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, Events } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } from '@discordjs/voice';
 import fetch from 'node-fetch';
@@ -145,10 +144,15 @@ async function playTrack(guildId) {
     clearTimeout(q.timeout);
 
     const track = q.queue[0];
-    const resource = createAudioResource(track.url);
-    q.player.play(resource);
-
-    updateControl(guildId);
+    try {
+        const res = await fetch(track.url);
+        const stream = res.body;
+        const resource = createAudioResource(stream);
+        q.player.play(resource);
+        updateControl(guildId);
+    } catch (err) {
+        console.error('🔇 فشل في تشغيل الرابط:', err);
+    }
 }
 
 async function updateControl(guildId) {
