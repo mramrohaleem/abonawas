@@ -1,5 +1,10 @@
 import discord.opus
-discord.opus._lib = None  # لضمان عدم محاولة التحميل من النظام
+try:
+    from opuslib import Decoder  # هذا يثبت أن opuslib متوفرة
+    discord.opus.load_opus('opuslib')
+except Exception as e:
+    print("فشل تحميل Opus:", e)
+
 import asyncio
 import logging
 import os
