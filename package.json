@@ -1,0 +1,17 @@
+{
+  "name": "soundcloud-quran-bot",
+  "version": "1.0.0",
+  "description": "A production-ready Discord bot to play SoundCloud Quran recitations with queue support per guild.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "play-dl": "^1.9.8",
+    "node-fetch": "^3.3.2",
+    "@discordjs/voice": "^0.14.0",
+    "dotenv": "^16.3.1"
+  },
+  "type": "module"
+}
