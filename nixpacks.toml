@@ -1,2 +1,2 @@
 [phases.setup]
-nixPkgs = ['nodejs_18', 'ffmpeg']
+nixPkgs = ['ffmpeg', 'nodejs_18', 'libsodium']
