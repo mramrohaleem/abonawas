@@ -43,6 +43,7 @@ class GuildAudio:
         self.message: Optional[discord.Message] = None
         self.view: Optional['PlayerView'] = None
         self.inactive_timer: Optional[asyncio.Task] = None
+        self.lock: asyncio.Lock = asyncio.Lock()
 
     def is_playing(self) -> bool:
         return self.voice_client and self.voice_client.is_connected()
@@ -84,7 +85,7 @@ class NextButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         audio = get_guild_audio(interaction.guild.id)
         if audio.voice_client:
-            await audio.voice_client.disconnect()
+            await audio.voice_client.disconnect(force=True)
             await play_next(interaction.guild.id)
         await interaction.response.defer()
 
@@ -95,7 +96,7 @@ class StopButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         audio = get_guild_audio(interaction.guild.id)
         if audio.voice_client:
-            await audio.voice_client.disconnect()
+            await audio.voice_client.disconnect(force=True)
             audio.queue.clear()
             audio.current = None
             audio.message = None
@@ -103,67 +104,75 @@ class StopButton(discord.ui.Button):
 
 async def play_next(guild_id: int):
     audio = get_guild_audio(guild_id)
+    async with audio.lock:
+        if not audio.queue:
+            audio.current = None
+            if audio.view:
+                audio.view.update_buttons()
+            if audio.message:
+                await audio.message.edit(content="✅ انتهت قائمة التشغيل.", view=None)
+            return
 
-    if not audio.queue:
-        audio.current = None
+        track = audio.queue.pop(0)
+        audio.current = track
+
+        with YoutubeDL(YTDL_OPTIONS) as ydl:
+            try:
+                info = ydl.extract_info(track.url, download=False)
+                if 'url' in info:
+                    url2 = info['url']
+                elif 'entries' in info and info['entries']:
+                    url2 = info['entries'][0].get('url')
+                    if not url2:
+                        raise KeyError
+                else:
+                    raise KeyError
+            except Exception as e:
+                logging.error(f"فشل استخراج الصوت: {e}")
+                await play_next(guild_id)
+                return
+
+        vc = audio.voice_client
+        if not vc:
+            return
+
+        process = subprocess.Popen(
+            [get_ffmpeg_exe(), "-i", url2, "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL
+        )
+
+        async def stream_audio():
+            if process.stdout is None:
+                logging.error("FFmpeg لم يُنتج stdout")
+                return
+
+            while True:
+                data = process.stdout.read(3840)
+                if not data:
+                    break
+                if vc.is_connected():
+                    try:
+                        vc.send_audio_packet(data, encode=False)
+                    except Exception:
+                        break
+                await asyncio.sleep(0)
+
+            process.terminate()
+            await process.wait()
+
         if audio.view:
             audio.view.update_buttons()
         await update_control_message(guild_id)
-        return
-
-    track = audio.queue.pop(0)
-    audio.current = track
-
-    with YoutubeDL(YTDL_OPTIONS) as ydl:
-        try:
-            info = ydl.extract_info(track.url, download=False)
-            if 'url' in info:
-                url2 = info['url']
-            elif 'entries' in info and info['entries']:
-                url2 = info['entries'][0].get('url')
-                if not url2:
-                    raise KeyError
-            else:
-                raise KeyError
-        except Exception as e:
-            logging.error(f"فشل استخراج الصوت: {e}")
-            await play_next(guild_id)
-            return
-
-    vc = audio.voice_client
-    if not vc:
-        return
-
-    process = subprocess.Popen(
-        [get_ffmpeg_exe(), "-i", url2, "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-
-    async def stream_audio():
-        if process.stdout is None:
-            logging.error("FFmpeg لم يُنتج stdout")
-            return
-
-        while True:
-            data = process.stdout.read(3840)
-            if not data:
-                break
-            if vc.is_connected():
-                try:
-                    vc.send_audio_packet(data, encode=False)
-                except Exception:
-                    break
-
-    await stream_audio()
-    await play_next(guild_id)
+        await stream_audio()
+        await play_next(guild_id)
 
 async def update_control_message(guild_id: int):
     audio = get_guild_audio(guild_id)
     if audio.message:
         desc = f"🎶 الآن يشغل: **{audio.current.title}**" if audio.current else "لا يوجد تشغيل حالياً."
         try:
-            await audio.message.edit(content=desc, view=audio.view)
+            await audio.message.edit(content=desc, view=audio.view if audio.view else None)
         except Exception as e:
             logging.error(f"فشل تحديث الرسالة: {e}")
 
@@ -240,7 +249,7 @@ async def on_voice_state_update(member, before, after):
         async def disconnect_later():
             await asyncio.sleep(60)
             if vc and len(vc.channel.members) == 1:
-                await vc.disconnect()
+                await vc.disconnect(force=True)
                 audio.queue.clear()
                 audio.message = None
                 audio.current = None
