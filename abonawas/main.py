@@ -7,12 +7,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from yt_dlp import YoutubeDL
-from imageio_ffmpeg import get_ffmpeg_exe  # FFmpeg البديل
+from imageio_ffmpeg import get_ffmpeg_exe
 
 # إعدادات السجل
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# إعدادات yt-dlp
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
@@ -151,10 +150,12 @@ async def play_next(guild_id: int):
 
     vc = audio.voice_client
     if vc:
+        source = discord.FFmpegPCMAudio(url2, executable=get_ffmpeg_exe(), **FFMPEG_OPTIONS)
         vc.play(
-            discord.FFmpegPCMAudio(url2, executable=get_ffmpeg_exe(), **FFMPEG_OPTIONS),
+            source,
             after=lambda e: bot.loop.call_soon_threadsafe(asyncio.create_task, play_next(guild_id))
         )
+        vc.source = source  # ✅ هذا يمنع إنشاء Opus Encoder
 
     if audio.view:
         audio.view.update_buttons()
@@ -258,5 +259,3 @@ if __name__ == "__main__":
         logging.error("يرجى تحديد متغير البيئة DISCORD_TOKEN")
     else:
         bot.run(token)
-
-
