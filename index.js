@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, Events } from 'discord.js';
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } from '@discordjs/voice';
+import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType } from '@discordjs/voice';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import sodium from 'libsodium-wrappers';
@@ -76,6 +76,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 });
 
                 player.on(AudioPlayerStatus.Idle, () => {
+                    console.log('🔁 Player entered IDLE mode. Skipping to next track if available.');
                     q.queue.shift();
                     if (q.queue.length > 0) {
                         playTrack(guildId);
@@ -93,11 +94,15 @@ client.on(Events.InteractionCreate, async interaction => {
                         }, 60000);
                     }
                 });
+
+                player.on('error', err => {
+                    console.error('❌ Audio Player Error:', err);
+                });
             }
 
             q.queue.push({ url });
             interaction.reply({ content: `📥 تمت إضافة الرابط إلى الطابور.`, ephemeral: true });
-            updateControl(guildId); // ✅ التحديث هنا لتفعيل زر ⏭️
+            updateControl(guildId);
 
             if (q.player.state.status === AudioPlayerStatus.Idle) {
                 playTrack(guildId);
@@ -151,8 +156,11 @@ async function playTrack(guildId) {
     try {
         const res = await fetch(track.url);
         const stream = res.body;
-        const resource = createAudioResource(stream);
+        const resource = createAudioResource(stream, {
+            inputType: StreamType.Arbitrary
+        });
         q.player.play(resource);
+        console.log(`▶️ Now playing: ${track.url}`);
         updateControl(guildId);
     } catch (err) {
         console.error('🔇 فشل في تشغيل الرابط:', err);
@@ -200,4 +208,3 @@ async function updateControl(guildId) {
 })();
 
 client.login(token);
-
