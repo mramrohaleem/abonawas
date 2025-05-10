@@ -1,7 +1,12 @@
 import { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, Events } from 'discord.js';
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } from '@discordjs/voice';
+import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, StreamType } from '@discordjs/voice';
 import fetch from 'node-fetch';
 import { Readable } from 'stream';
+import { writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { spawn } from 'child_process';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import sodium from 'libsodium-wrappers';
 
@@ -168,14 +173,30 @@ async function playTrack(guildId) {
         }
 
         const buffer = await res.buffer();
-        const stream = Readable.from(buffer);
 
-        const resource = createAudioResource(stream);
+        // 🗂️ حفظ مؤقت
+        const filename = `audio-${crypto.randomUUID()}.mp3`;
+        const filepath = join(tmpdir(), filename);
+        await writeFile(filepath, buffer);
+
+        // 🔁 تحويل عبر ffmpeg
+        const ffmpeg = spawn('ffmpeg', [
+            '-i', filepath,
+            '-f', 's16le',
+            '-ar', '48000',
+            '-ac', '2',
+            'pipe:1'
+        ], { stdio: ['pipe', 'pipe', 'ignore'] });
+
+        const resource = createAudioResource(Readable.from(ffmpeg.stdout), {
+            inputType: StreamType.Raw
+        });
+
         q.player.play(resource);
-        console.log(`▶️ Now playing from buffer: ${track.url}`);
+        console.log(`▶️ Now playing (ffmpeg): ${track.url}`);
         updateControl(guildId);
     } catch (err) {
-        console.error('❌ فشل في تشغيل الرابط (buffered):', err);
+        console.error('❌ فشل في تشغيل الملف عبر FFmpeg:', err);
     }
 }
 
@@ -220,4 +241,3 @@ async function updateControl(guildId) {
 })();
 
 client.login(token);
-
