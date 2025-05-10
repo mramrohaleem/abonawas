@@ -137,10 +137,14 @@ async def play_next(guild_id: int):
     process = subprocess.Popen(
         [get_ffmpeg_exe(), "-i", url2, "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"],
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL
+        stderr=subprocess.PIPE
     )
 
-    def read_and_send():
+    async def stream_audio():
+        if process.stdout is None:
+            logging.error("FFmpeg لم يُنتج stdout")
+            return
+
         while True:
             data = process.stdout.read(3840)
             if not data:
@@ -151,9 +155,7 @@ async def play_next(guild_id: int):
                 except Exception:
                     break
 
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, read_and_send)
-
+    await stream_audio()
     await play_next(guild_id)
 
 async def update_control_message(guild_id: int):
@@ -254,3 +256,4 @@ if __name__ == "__main__":
         logging.error("يرجى تحديد متغير البيئة DISCORD_TOKEN")
     else:
         bot.run(token)
+
