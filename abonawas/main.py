@@ -1,3 +1,5 @@
+import discord.opus
+discord.opus._lib = None  # لضمان عدم محاولة التحميل من النظام
 import asyncio
 import logging
 import os
