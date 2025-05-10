@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from yt_dlp import YoutubeDL
+from imageio_ffmpeg import get_ffmpeg_exe  # FFmpeg البديل
 
 # إعدادات السجل
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -82,7 +83,6 @@ class PreviousButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        # التخطي للخلف غير مدعوم حالياً
 
 class PauseResumeButton(discord.ui.Button):
     def __init__(self, disabled: bool):
@@ -152,7 +152,7 @@ async def play_next(guild_id: int):
     vc = audio.voice_client
     if vc:
         vc.play(
-            discord.FFmpegPCMAudio(url2, **FFMPEG_OPTIONS),
+            discord.FFmpegPCMAudio(url2, executable=get_ffmpeg_exe(), **FFMPEG_OPTIONS),
             after=lambda e: asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop)
         )
 
@@ -258,6 +258,5 @@ if __name__ == "__main__":
         logging.error("يرجى تحديد متغير البيئة DISCORD_TOKEN")
     else:
         bot.run(token)
-
 
 
