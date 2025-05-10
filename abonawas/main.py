@@ -5,13 +5,13 @@ from typing import Optional
 
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 from yt_dlp import YoutubeDL
 
 # إعدادات السجل
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# إعدادات ytdlp
+# إعدادات yt-dlp
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
@@ -82,7 +82,7 @@ class PreviousButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        # غير مدعوم حالياً: تخطي للخلف
+        # التخطي للخلف غير مدعوم حالياً
 
 class PauseResumeButton(discord.ui.Button):
     def __init__(self, disabled: bool):
@@ -116,13 +116,17 @@ class StopButton(discord.ui.Button):
         if audio.voice_client:
             await audio.voice_client.disconnect()
             audio.queue.clear()
+            audio.current = None
+            audio.message = None
         await interaction.response.defer()
 
 async def play_next(guild_id: int):
     audio = get_guild_audio(guild_id)
+
     if not audio.queue:
         audio.current = None
-        audio.view.update_buttons()
+        if audio.view:
+            audio.view.update_buttons()
         await update_control_message(guild_id)
         return
 
@@ -132,7 +136,14 @@ async def play_next(guild_id: int):
     with YoutubeDL(YTDL_OPTIONS) as ydl:
         try:
             info = ydl.extract_info(track.url, download=False)
-            url2 = info['url']
+            if 'url' in info:
+                url2 = info['url']
+            elif 'entries' in info and info['entries']:
+                url2 = info['entries'][0].get('url')
+                if not url2:
+                    raise KeyError
+            else:
+                raise KeyError
         except Exception as e:
             logging.error(f"فشل استخراج الصوت: {e}")
             await play_next(guild_id)
@@ -140,9 +151,13 @@ async def play_next(guild_id: int):
 
     vc = audio.voice_client
     if vc:
-        vc.play(discord.FFmpegPCMAudio(url2, **FFMPEG_OPTIONS), after=lambda e: asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop))
+        vc.play(
+            discord.FFmpegPCMAudio(url2, **FFMPEG_OPTIONS),
+            after=lambda e: asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop)
+        )
 
-    audio.view.update_buttons()
+    if audio.view:
+        audio.view.update_buttons()
     await update_control_message(guild_id)
 
 async def update_control_message(guild_id: int):
@@ -178,9 +193,6 @@ async def play(interaction: discord.Interaction, url: str):
     track = Track(url, info.get('title', 'بدون عنوان'), interaction.user)
     audio.queue.append(track)
 
-    if not audio.is_playing():
-        await play_next(interaction.guild.id)
-
     if not audio.view:
         audio.view = PlayerView(interaction.guild.id)
 
@@ -189,6 +201,9 @@ async def play(interaction: discord.Interaction, url: str):
         audio.message = msg
     else:
         await update_control_message(interaction.guild.id)
+
+    if not audio.is_playing():
+        await play_next(interaction.guild.id)
 
 @tree.command(name="queue", description="عرض قائمة التشغيل")
 async def queue(interaction: discord.Interaction):
@@ -243,5 +258,6 @@ if __name__ == "__main__":
         logging.error("يرجى تحديد متغير البيئة DISCORD_TOKEN")
     else:
         bot.run(token)
+
 
 
