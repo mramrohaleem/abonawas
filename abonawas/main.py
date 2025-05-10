@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 import os
@@ -154,7 +153,7 @@ async def play_next(guild_id: int):
     if vc:
         vc.play(
             discord.FFmpegPCMAudio(url2, executable=get_ffmpeg_exe(), **FFMPEG_OPTIONS),
-            after=lambda e: asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop)
+            after=lambda e: bot.loop.call_soon_threadsafe(asyncio.create_task, play_next(guild_id))
         )
 
     if audio.view:
