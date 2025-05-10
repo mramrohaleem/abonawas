@@ -1,9 +1,13 @@
 import discord.opus
 try:
-    from opuslib import Decoder  # هذا يثبت أن opuslib متوفرة
-    discord.opus.load_opus('opuslib')
-except Exception as e:
-    print("فشل تحميل Opus:", e)
+    discord.opus.load_opus('libopus.so.0')  # محاولة تحميل مباشر
+except OSError:
+    try:
+        import discord_opus_static
+        discord.opus.load_opus(discord_opus_static.lib)
+    except Exception as e:
+        print("❌ فشل تحميل Opus:", e)
+
 
 import asyncio
 import logging
