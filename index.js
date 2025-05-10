@@ -154,16 +154,29 @@ async function playTrack(guildId) {
 
     const track = q.queue[0];
     try {
-        const res = await fetch(track.url);
+        const res = await fetch(track.url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Connection': 'keep-alive'
+            }
+        });
+
+        if (!res.ok) {
+            console.error(`❌ HTTP error ${res.status}: ${res.statusText}`);
+            return;
+        }
+
         const stream = res.body;
+
         const resource = createAudioResource(stream, {
             inputType: StreamType.Arbitrary
         });
+
         q.player.play(resource);
-        console.log(`▶️ Now playing: ${track.url}`);
+        console.log(`▶️ Now playing with headers: ${track.url}`);
         updateControl(guildId);
     } catch (err) {
-        console.error('🔇 فشل في تشغيل الرابط:', err);
+        console.error('❌ فشل في تشغيل الرابط (fetch with headers):', err);
     }
 }
 
