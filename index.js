@@ -97,6 +97,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
             q.queue.push({ url });
             interaction.reply({ content: `📥 تمت إضافة الرابط إلى الطابور.`, ephemeral: true });
+            updateControl(guildId); // ✅ التحديث هنا لتفعيل زر ⏭️
 
             if (q.player.state.status === AudioPlayerStatus.Idle) {
                 playTrack(guildId);
@@ -199,3 +200,4 @@ async function updateControl(guildId) {
 })();
 
 client.login(token);
+
