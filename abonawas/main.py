@@ -1,12 +1,10 @@
 import discord.opus
 try:
-    discord.opus.load_opus('libopus.so.0')  # محاولة تحميل مباشر
-except OSError:
-    try:
-        import discord_opus_static
-        discord.opus.load_opus(discord_opus_static.lib)
-    except Exception as e:
-        print("❌ فشل تحميل Opus:", e)
+    import discord_ext_opus
+    discord_ext_opus.load()
+except Exception as e:
+    print("❌ فشل تحميل Opus:", e)
+
 
 
 import asyncio
