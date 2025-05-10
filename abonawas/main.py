@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import subprocess
 from typing import Optional
 
 import discord
@@ -9,7 +10,6 @@ from discord.ext import commands
 from yt_dlp import YoutubeDL
 from imageio_ffmpeg import get_ffmpeg_exe
 
-# إعدادات السجل
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 YTDL_OPTIONS = {
@@ -19,11 +19,6 @@ YTDL_OPTIONS = {
     'extract_flat': 'in_playlist',
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-}
-
-FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn',
 }
 
 intents = discord.Intents.default()
@@ -50,7 +45,7 @@ class GuildAudio:
         self.inactive_timer: Optional[asyncio.Task] = None
 
     def is_playing(self) -> bool:
-        return self.voice_client and self.voice_client.is_playing()
+        return self.voice_client and self.voice_client.is_connected()
 
 guild_audio: dict[int, GuildAudio] = {}
 
@@ -71,29 +66,15 @@ class PlayerView(discord.ui.View):
         has_next = len(audio.queue) > 0
 
         self.clear_items()
-        self.add_item(PreviousButton(disabled=not has_next))
         self.add_item(PauseResumeButton(disabled=not is_playing))
         self.add_item(NextButton(disabled=not has_next))
         self.add_item(StopButton(disabled=not is_playing))
-
-class PreviousButton(discord.ui.Button):
-    def __init__(self, disabled: bool):
-        super().__init__(style=discord.ButtonStyle.secondary, emoji='⏮️', disabled=disabled)
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer()
 
 class PauseResumeButton(discord.ui.Button):
     def __init__(self, disabled: bool):
         super().__init__(style=discord.ButtonStyle.secondary, emoji='⏸️', disabled=disabled)
 
     async def callback(self, interaction: discord.Interaction):
-        audio = get_guild_audio(interaction.guild.id)
-        vc = audio.voice_client
-        if vc.is_paused():
-            vc.resume()
-        else:
-            vc.pause()
         await interaction.response.defer()
 
 class NextButton(discord.ui.Button):
@@ -102,8 +83,9 @@ class NextButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         audio = get_guild_audio(interaction.guild.id)
-        if audio.voice_client and audio.is_playing():
-            audio.voice_client.stop()
+        if audio.voice_client:
+            await audio.voice_client.disconnect()
+            await play_next(interaction.guild.id)
         await interaction.response.defer()
 
 class StopButton(discord.ui.Button):
@@ -149,17 +131,30 @@ async def play_next(guild_id: int):
             return
 
     vc = audio.voice_client
-    if vc:
-        source = discord.FFmpegPCMAudio(url2, executable=get_ffmpeg_exe(), **FFMPEG_OPTIONS)
-        vc.play(
-            source,
-            after=lambda e: bot.loop.call_soon_threadsafe(asyncio.create_task, play_next(guild_id))
-        )
-        vc.source = source  # ✅ هذا يمنع إنشاء Opus Encoder
+    if not vc:
+        return
 
-    if audio.view:
-        audio.view.update_buttons()
-    await update_control_message(guild_id)
+    process = subprocess.Popen(
+        [get_ffmpeg_exe(), "-i", url2, "-f", "s16le", "-ar", "48000", "-ac", "2", "pipe:1"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+
+    def read_and_send():
+        while True:
+            data = process.stdout.read(3840)
+            if not data:
+                break
+            if vc.is_connected():
+                try:
+                    vc.send_audio_packet(data, encode=False)
+                except Exception:
+                    break
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, read_and_send)
+
+    await play_next(guild_id)
 
 async def update_control_message(guild_id: int):
     audio = get_guild_audio(guild_id)
