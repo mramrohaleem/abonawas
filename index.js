@@ -167,8 +167,7 @@ async function playTrack(guildId) {
             return;
         }
 
-        const arrayBuffer = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        const buffer = await res.buffer();
         const stream = Readable.from(buffer);
 
         const resource = createAudioResource(stream);
