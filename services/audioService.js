@@ -1,6 +1,8 @@
+// services/audioService.js
 const fs = require('fs');
 const path = require('path');
-const fetch = require('node-fetch');
+// dynamic-import wrapper to support ESM-only node-fetch
+const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
 const { pipeline } = require('stream');
 const { promisify } = require('util');
 const { v4: uuidv4 } = require('uuid');
@@ -119,7 +121,7 @@ function getQueue(guildId) {
 function getQueueEmbed(queue) {
   return new EmbedBuilder()
     .setTitle('Queue')
-    .setDescription(queue.map((t,i) => `${i+1}. ${t.title}`).join('\n') || 'Empty')
+    .setDescription(queue.map((t, i) => `${i+1}. ${t.title}`).join('\n') || 'Empty')
     .setColor(0x00AE86);
 }
 
@@ -148,11 +150,20 @@ function cleanupCache() {
     return { file: f, path: p, mtime: mtimeMs, size };
   });
   let total = files.reduce((acc, f) => acc + f.size, 0);
-  files.sort((a,b) => a.mtime - b.mtime);
+  files.sort((a, b) => a.mtime - b.mtime);
   while (files.length > maxCacheFiles || total > maxCacheSize) {
     const f = files.shift();
     try { fs.unlinkSync(f.path); total -= f.size; } catch {}
   }
 }
 
-module.exports = { enqueue, skip, pause, resume, stop, getQueue, getQueueEmbed, handleVoiceStateUpdate };
+module.exports = {
+  enqueue,
+  skip,
+  pause,
+  resume,
+  stop,
+  getQueue,
+  getQueueEmbed,
+  handleVoiceStateUpdate
+};
