@@ -1,7 +1,6 @@
 // services/audioService.js
 const fs = require('fs');
 const path = require('path');
-// use built-in fetch in Node.js 18+
 const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
 const { pipeline } = require('stream');
 const { promisify } = require('util');
@@ -68,20 +67,24 @@ async function enqueue(interaction, input, traceId) {
 
   let url = input;
 
+  // ✅ دعم صيغة "2:255" مثلاً
   if (/^\d+:\d+$/.test(input)) {
     const [s, a] = input.split(':');
     const apiUrl = `https://api.alquran.cloud/v1/ayah/${s}:${a}/ar.alafasy`;
     const response = await fetch(apiUrl);
     const data = await response.json();
-    if (!data.data || !data.data.audio) throw new Error('No audio found in API response');
+    if (!data?.data?.audio) throw new Error('No audio found in API response');
     url = data.data.audio;
   }
+
+  // ✅ تحقق أن url صالح
+  if (!url || typeof url !== 'string') throw new Error('Invalid audio URL: ' + String(url));
 
   const fileName = `${uuidv4()}.mp3`;
   const filePath = path.join(cacheDir, fileName);
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
   await streamPipeline(res.body, fs.createWriteStream(filePath));
 
   state.queue.push({ title: input, path: filePath });
