@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 // use built-in fetch in Node.js 18+
-const fetch = global.fetch;
+const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
 const { pipeline } = require('stream');
 const { promisify } = require('util');
 const { v4: uuidv4 } = require('uuid');
