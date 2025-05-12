@@ -29,7 +29,9 @@ const guildStates = new Map();
 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
 setInterval(cleanupCache, cleanupInterval);
 
-function trace() { return uuidv4().split('-')[0]; }
+function trace() {
+  return uuidv4().split('-')[0];
+}
 
 async function enqueue(interaction, input, traceId) {
   const guildId = interaction.guildId;
@@ -38,8 +40,10 @@ async function enqueue(interaction, input, traceId) {
     state = { queue: [], connection: null, player: null, current: null };
     guildStates.set(guildId, state);
   }
+
   const memberVC = interaction.member.voice.channel;
   if (!memberVC) throw new Error('You must join a voice channel');
+
   if (!state.connection) {
     state.connection = joinVoiceChannel({
       channelId: memberVC.id,
@@ -52,6 +56,7 @@ async function enqueue(interaction, input, traceId) {
         setTimeout(() => state.connection.rejoin(), 5000);
       }
     });
+
     state.player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
     state.connection.subscribe(state.player);
     state.player.on('stateChange', (oldP, newP) => {
@@ -60,20 +65,31 @@ async function enqueue(interaction, input, traceId) {
       }
     });
   }
+
   let url = input;
+
   if (/^\d+:\d+$/.test(input)) {
     const [s, a] = input.split(':');
-    url = `https://api.alquran.cloud/v1/ayah/${s}:${a}/ar.alafasy?audio`;
+    const apiUrl = `https://api.alquran.cloud/v1/ayah/${s}:${a}/ar.alafasy`;
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+    if (!data.data || !data.data.audio) throw new Error('No audio found in API response');
+    url = data.data.audio;
   }
+
   const fileName = `${uuidv4()}.mp3`;
   const filePath = path.join(cacheDir, fileName);
+
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Fetch failed ${url}`);
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
   await streamPipeline(res.body, fs.createWriteStream(filePath));
+
   state.queue.push({ title: input, path: filePath });
+
   if (state.player.state.status !== AudioPlayerStatus.Playing) {
     playNext(guildId, traceId);
   }
+
   return state.queue;
 }
 
@@ -121,7 +137,7 @@ function getQueue(guildId) {
 function getQueueEmbed(queue) {
   return new EmbedBuilder()
     .setTitle('Queue')
-    .setDescription(queue.map((t, i) => `${i+1}. ${t.title}`).join('\n') || 'Empty')
+    .setDescription(queue.map((t, i) => `${i + 1}. ${t.title}`).join('\n') || 'Empty')
     .setColor(0x00AE86);
 }
 
@@ -129,6 +145,7 @@ async function handleVoiceStateUpdate(oldState, newState) {
   const guildId = oldState.guild.id;
   const state = guildStates.get(guildId);
   if (!state || !state.connection) return;
+
   const vcId = state.connection.joinConfig.channelId;
   const voiceChannel = oldState.guild.channels.cache.get(vcId);
   if (voiceChannel.members.filter(m => !m.user.bot).size === 0) {
@@ -149,11 +166,16 @@ function cleanupCache() {
     const { mtimeMs, size } = fs.statSync(p);
     return { file: f, path: p, mtime: mtimeMs, size };
   });
+
   let total = files.reduce((acc, f) => acc + f.size, 0);
   files.sort((a, b) => a.mtime - b.mtime);
+
   while (files.length > maxCacheFiles || total > maxCacheSize) {
     const f = files.shift();
-    try { fs.unlinkSync(f.path); total -= f.size; } catch {}
+    try {
+      fs.unlinkSync(f.path);
+      total -= f.size;
+    } catch {}
   }
 }
 
@@ -167,4 +189,3 @@ module.exports = {
   getQueueEmbed,
   handleVoiceStateUpdate
 };
-
