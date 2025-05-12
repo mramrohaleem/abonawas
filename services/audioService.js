@@ -1,8 +1,8 @@
 // services/audioService.js
 const fs = require('fs');
 const path = require('path');
-// dynamic-import wrapper to support ESM-only node-fetch
-const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
+// use built-in fetch in Node.js 18+
+const fetch = global.fetch;
 const { pipeline } = require('stream');
 const { promisify } = require('util');
 const { v4: uuidv4 } = require('uuid');
@@ -167,3 +167,4 @@ module.exports = {
   getQueueEmbed,
   handleVoiceStateUpdate
 };
+
