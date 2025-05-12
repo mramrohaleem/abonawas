@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "discord-quran-bot"
+version = "1.0.0"
+description = "A Quran recitation bot for Discord"
+
+[tool.poetry.scripts]
+bot = "bot:main"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+discord.py = "*"
+yt-dlp = "*"
+
+[tool.poetry.dev-dependencies]
+pytest = "*"
+flake8 = "*"
+pre-commit = "*"
