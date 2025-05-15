@@ -11,25 +11,21 @@ class PlayerControls(View):
     A persistent View containing playback control buttons.
     """
     def __init__(self, player: "Player"):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # timeout=None -> persistent
         self.player = player
 
     @ui.button(emoji="▶️", style=ButtonStyle.green, custom_id="qbot_play")
     async def play(self, button: Button, interaction: discord.Interaction):
-        """Resume playback."""
         await self.player.resume(interaction)
 
     @ui.button(emoji="⏸️", style=ButtonStyle.blurple, custom_id="qbot_pause")
     async def pause(self, button: Button, interaction: discord.Interaction):
-        """Pause playback."""
         await self.player.pause(interaction)
 
     @ui.button(emoji="⏭️", style=ButtonStyle.gray, custom_id="qbot_next")
     async def skip(self, button: Button, interaction: discord.Interaction):
-        """Skip to next track."""
         await self.player.skip(interaction)
 
     @ui.button(emoji="⏹️", style=ButtonStyle.red, custom_id="qbot_stop")
     async def stop(self, button: Button, interaction: discord.Interaction):
-        """Stop and clear queue."""
         await self.player.stop(interaction)
