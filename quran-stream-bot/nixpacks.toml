@@ -1,3 +1,5 @@
-# تثبيت FFmpeg و Opus system package قبل إعداد بايثون
+# nixpacks.toml
+
 [phases.setup]
-packages = ["ffmpeg", "opus"]
+# قبل بايثون: ثبّت ffmpeg (للفك) و libopus (للتشفير)
+packages = ["ffmpeg", "libopus"]
