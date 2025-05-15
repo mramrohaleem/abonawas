@@ -1,3 +1,5 @@
+# cogs/player.py
+
 import discord
 from discord.ext import commands
 from discord import FFmpegOpusAudio, Embed
@@ -10,12 +12,18 @@ from collections import deque
 from datetime import datetime
 
 class Player(commands.Cog):
+    """
+    Cog managing the playback queue, voice client, and UI updates.
+    """
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.logger = setup_logger()
         self.downloader = Downloader(self.logger)
-        # أنشئ الـ View لكن لا تسجّله هنا
+
+        # أنشئ View واحدة ولكن لا تسجلها هنا
         self.controls = PlayerControls(self)
+
+        # حالة كل سيرفر
         self.players: dict[int, dict] = {}
 
     def get_state(self, guild_id: int) -> dict:
@@ -48,6 +56,7 @@ class Player(commands.Cog):
 
     async def _play_next(self, ctx: commands.Context):
         st = self.get_state(ctx.guild.id)
+
         if st["timer_task"]:
             st["timer_task"].cancel()
 
@@ -77,6 +86,7 @@ class Player(commands.Cog):
         except Exception as e:
             self.logger.error(f"[{ctx.guild.id}] Failed to play: {e}", exc_info=True)
 
+        # إعداد الـ Embed
         audio = MP3(path)
         dur = int(audio.info.length)
         embed = Embed(
@@ -89,9 +99,11 @@ class Player(commands.Cog):
         embed.add_field(name="Queue Length", value=str(len(st["queue"])), inline=True)
 
         if not st["embed_msg"]:
+            # عند الإرسال الأولي، اجعل View مسجل عبر bot.add_view في bot.py
             msg = await ctx.send(embed=embed, view=self.controls)
             st["embed_msg"] = msg
         else:
+            # عند التعديل، مرّر view لضمان بقاء الأزرار
             await st["embed_msg"].edit(embed=embed, view=self.controls)
 
         st["timer_task"] = self.bot.loop.create_task(self._update_timer(ctx.guild.id, dur))
@@ -116,21 +128,21 @@ class Player(commands.Cog):
         if st["vc"] and st["vc"].is_paused():
             st["vc"].resume()
             self.logger.info(f"[{interaction.guild.id}] Resumed playback")
-        await interaction.response.defer_update()
+        await interaction.response.send_message("▶️ Resumed", ephemeral=True)
 
     async def pause(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
         if st["vc"] and st["vc"].is_playing():
             st["vc"].pause()
             self.logger.info(f"[{interaction.guild.id}] Paused playback")
-        await interaction.response.defer_update()
+        await interaction.response.send_message("⏸️ Paused", ephemeral=True)
 
     async def skip(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
         if st["vc"] and st["vc"].is_playing():
             st["vc"].stop()
             self.logger.info(f"[{interaction.guild.id}] Skipped track")
-        await interaction.response.defer_update()
+        await interaction.response.send_message("⏭️ Skipped to next", ephemeral=True)
 
     async def stop(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
@@ -142,7 +154,7 @@ class Player(commands.Cog):
         if st["timer_task"]:
             st["timer_task"].cancel()
         self.logger.info(f"[{interaction.guild.id}] Stopped and cleared queue")
-        await interaction.response.defer_update()
+        await interaction.response.send_message("⏹️ Stopped and cleared queue", ephemeral=True)
 
     async def _cleanup(self, guild_id: int):
         st = self.get_state(guild_id)
@@ -158,5 +170,6 @@ class Player(commands.Cog):
         m, s = divmod(seconds, 60)
         return f"{m:02d}:{s:02d}"
 
+# Extension entrypoint for discord.py 2.x
 async def setup(bot: commands.Bot):
     await bot.add_cog(Player(bot))
