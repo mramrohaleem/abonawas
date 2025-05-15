@@ -1,3 +1,5 @@
-# Install ffmpeg in the container before Python setup
+# nixpacks.toml
+
 [phases.setup]
-packages = ["ffmpeg"]
+# before Python: install ffmpeg (for decoding) + opus (for encoding)
+packages = ["ffmpeg", "opus"]
