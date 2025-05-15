@@ -1,5 +1,5 @@
 # nixpacks.toml
 
 [phases.setup]
-# before Python: install ffmpeg (for decoding) + opus (for encoding)
-packages = ["ffmpeg", "opus"]
+# before Python: install ffmpeg (decode) + libopus (encode)
+packages = ["ffmpeg", "libopus"]
