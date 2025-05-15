@@ -12,7 +12,7 @@ from datetime import datetime
 
 class Player(commands.Cog):
     """
-    Cog implementing slash commands for audio streaming.
+    Cog لتنفيذ أوامر السلاش لبث الصوتيات.
     """
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -38,22 +38,22 @@ class Player(commands.Cog):
     async def slash_stream(self, interaction: discord.Interaction, url: str):
         if not interaction.user.voice or not interaction.user.voice.channel:
             return await interaction.response.send_message(
-                "🚫 You must be in a voice channel.", ephemeral=True
+                "🚫 يجب أن تكون في قناة صوتية.", ephemeral=True
             )
         await interaction.response.defer(thinking=True)
         st = self.get_state(interaction.guild_id)
         st["queue"].append(url)
-        self.logger.info(f"[{interaction.guild_id}] Queued URL: {url}")
+        self.logger.info(f"[{interaction.guild_id}] تمت إضافة الرابط للطابور: {url}")
 
         if not st["vc"] or not st["vc"].is_connected():
             st["vc"] = await interaction.user.voice.channel.connect()
-            self.logger.info(f"[{interaction.guild_id}] Connected to voice channel")
+            self.logger.info(f"[{interaction.guild_id}] تم الاتصال بالقناة الصوتية")
 
         if not st["current"]:
             await self._play_next(interaction, is_initial=True)
         else:
             await interaction.followup.send(
-                f"➕ Added to queue. Position: {len(st['queue'])}",
+                f"➕ تمت الإضافة إلى الطابور. الموقع: {len(st['queue'])}",
                 ephemeral=True
             )
 
@@ -67,9 +67,9 @@ class Player(commands.Cog):
 
         if vc and vc.is_paused():
             vc.resume()
-            self.logger.info(f"[{interaction.guild_id}] Resumed via /play")
+            self.logger.info(f"[{interaction.guild_id}] استئناف عبر /play")
             return await interaction.response.send_message(
-                "▶️ استُؤنف التشغيل", ephemeral=True
+                "▶️ تم استئناف التشغيل", ephemeral=True
             )
 
         if (not vc or not vc.is_playing()) and st["queue"]:
@@ -78,7 +78,7 @@ class Player(commands.Cog):
             return
 
         await interaction.response.send_message(
-            "لا يوجد شيء مُوقوف أو في الطابور ليتم تشغيله.", ephemeral=True
+            "لا يوجد شيء مُوقَّف مؤقتًا أو في الطابور للتشغيل.", ephemeral=True
         )
 
     @app_commands.command(
@@ -90,10 +90,10 @@ class Player(commands.Cog):
         vc = st["vc"]
         if not vc or not vc.is_playing():
             return await interaction.response.send_message(
-                "⏸️ Nothing is playing.", ephemeral=True
+                "⏸️ لا يوجد شيء قيد التشغيل.", ephemeral=True
             )
         vc.pause()
-        self.logger.info(f"[{interaction.guild_id}] Paused via /pause")
+        self.logger.info(f"[{interaction.guild_id}] إيقاف مؤقت عبر /pause")
         await interaction.response.send_message("⏸️ تم الإيقاف مؤقتًا", ephemeral=True)
 
     @app_commands.command(
@@ -105,10 +105,10 @@ class Player(commands.Cog):
         vc = st["vc"]
         if not vc or not vc.is_playing():
             return await interaction.response.send_message(
-                "⏭️ Nothing is playing.", ephemeral=True
+                "⏭️ لا يوجد شيء قيد التشغيل.", ephemeral=True
             )
         vc.stop()
-        self.logger.info(f"[{interaction.guild_id}] Skipped via /skip")
+        self.logger.info(f"[{interaction.guild_id}] تخطي عبر /skip")
         await interaction.response.send_message("⏭️ تم التخطي", ephemeral=True)
 
     @app_commands.command(
@@ -116,7 +116,7 @@ class Player(commands.Cog):
         description="إيقاف التشغيل ومسح الطابور"
     )
     async def slash_stop(self, interaction: discord.Interaction):
-        # رد فوري لتجنب "did not respond"
+        # رد فوري لتجنب Timeout
         await interaction.response.send_message(
             "⏹️ تم الإيقاف ومسح الطابور", ephemeral=True
         )
@@ -130,7 +130,7 @@ class Player(commands.Cog):
         st["current"] = None
         if st["timer_task"]:
             st["timer_task"].cancel()
-        self.logger.info(f"[{interaction.guild_id}] Stopped via /stop")
+        self.logger.info(f"[{interaction.guild_id}] إيقاف ومسح طابور عبر /stop")
 
     @app_commands.command(
         name="help",
@@ -182,7 +182,7 @@ class Player(commands.Cog):
             source,
             after=lambda e: self.bot.loop.create_task(self._after_play(interaction, e))
         )
-        self.logger.info(f"[{interaction.guild_id}] Started playback: {path}")
+        self.logger.info(f"[{interaction.guild_id}] بدء التشغيل: {path}")
 
         audio = MP3(path)
         dur = int(audio.info.length)
@@ -190,8 +190,8 @@ class Player(commands.Cog):
             title=path.split("/")[-1],
             color=discord.Color.blurple()
         )
-        embed.add_field(name="Duration", value=self._format_time(dur), inline=True)
-        embed.add_field(name="Queue Length", value=str(len(st["queue"])), inline=True)
+        embed.add_field(name="المدة", value=self._format_time(dur), inline=True)
+        embed.add_field(name="طول الطابور", value=str(len(st["queue"])), inline=True)
 
         if is_initial:
             st["message"] = await interaction.followup.send(embed=embed)
@@ -204,7 +204,7 @@ class Player(commands.Cog):
 
     async def _after_play(self, interaction: discord.Interaction, error):
         if error:
-            self.logger.error(f"Playback error: {error}", exc_info=True)
+            self.logger.error(f"خطأ أثناء التشغيل: {error}", exc_info=True)
         await self._play_next(interaction, is_initial=False)
 
     async def _update_timer(self, guild_id: int, total: int):
@@ -213,8 +213,8 @@ class Player(commands.Cog):
         while st["vc"] and st["vc"].is_playing():
             elapsed = int((datetime.utcnow() - start).total_seconds())
             embed = st["message"].embeds[0]
-            embed.set_field_at(0, name="Duration", value=self._format_time(total), inline=True)
-            embed.set_field_at(1, name="Elapsed", value=self._format_time(elapsed), inline=True)
+            embed.set_field_at(0, name="المدة", value=self._format_time(total), inline=True)
+            embed.set_field_at(1, name="المدة المنقضية", value=self._format_time(elapsed), inline=True)
             await st["message"].edit(embed=embed)
             await asyncio.sleep(10)
 
