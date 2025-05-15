@@ -1,3 +1,5 @@
+# bot.py
+
 import os
 import asyncio
 import discord
@@ -8,21 +10,18 @@ from cogs.player import Player
 
 logger = setup_logger()
 
-# FFmpeg binary for Opus encoding
 ffmpeg_exe = get_ffmpeg_exe()
 logger.info(f"Using ffmpeg executable at: {ffmpeg_exe}")
 
 class QuranBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.voice_states = True      # نحتاج فقط هذه النية حالياً
+        intents.voice_states = True
         super().__init__(command_prefix="!", intents=intents)
         self.ffmpeg_exe = ffmpeg_exe
 
     async def setup_hook(self):
-        # تحميل Cog التشغيل
         await self.add_cog(Player(self))
-        # مزامنة أوامر السلاش مع ديسكورد
         await self.tree.sync()
         logger.info("Synced slash commands")
 
