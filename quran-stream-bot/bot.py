@@ -22,11 +22,10 @@ class QuranBot(commands.Bot):
     async def setup_hook(self):
         # 1) حمّل كوج الـ Player
         await self.load_extension("cogs.player")
-
-        # 2) سجل الـ View من داخل الكوج بعد تحميله
-        player_cog = self.get_cog("Player")
-        if player_cog:
-            self.add_view(player_cog.controls)
+        # 2) سجّل view بعد انتهاء التحميل
+        player = self.get_cog("Player")
+        if player:
+            self.add_view(player.controls)
             logger.info("Registered persistent PlayerControls view")
 
 async def main():
