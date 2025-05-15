@@ -3,3 +3,4 @@ aiohttp>=3.8.0
 mutagen>=1.45.1
 imageio-ffmpeg>=0.5.3
 opuslib>=3.0.1
+yt-dlp>=2024.01.10
