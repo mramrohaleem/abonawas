@@ -1,19 +1,28 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands
 from modules.logger_config import setup_logger
 
+# إعداد الصلاحيات التي يحتاجها البوت
 intents = discord.Intents.default()
 intents.voice_states = True
 intents.message_content = True
 
+# تهيئة الـ logger المركزي
 logger = setup_logger()
 
-def main():
-    bot = commands.Bot(command_prefix="!", intents=intents)
-    # load cogs
-    bot.load_extension("cogs.player")
-    bot.load_extension("cogs.ui")  # ensures persistent View
+class QuranBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
+
+    async def setup_hook(self):
+        # يتم استدعاؤها أوتوماتيكيًا قبل الاتصال بالـ Gateway
+        await self.load_extension("cogs.player")
+        await self.load_extension("cogs.ui")
+
+async def main():
+    bot = QuranBot()
 
     @bot.event
     async def on_ready():
@@ -22,9 +31,9 @@ def main():
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         logger.error("DISCORD_TOKEN not set in environment.")
-        exit(1)
+        return
 
-    bot.run(token)
+    await bot.start(token)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
