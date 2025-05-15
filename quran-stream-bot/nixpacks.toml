@@ -1,0 +1,5 @@
+# nixpacks.toml
+
+[phases.setup]
+# قبل ما يركّب بايثون، يثبت ffmpeg من nixpkgs
+packages = ["ffmpeg"]
