@@ -6,13 +6,11 @@ import discord
 from discord.ext import commands
 from modules.logger_config import setup_logger
 from imageio_ffmpeg import get_ffmpeg_exe
-
-# أضفنا هذا الاستيراد ليُعرف اسم Player
 from cogs.player import Player
 
 logger = setup_logger()
 
-# مسار FFmpeg المضمّن
+# مسار FFmpeg المضمّن لترميز Opus
 ffmpeg_exe = get_ffmpeg_exe()
 logger.info(f"Using ffmpeg executable at: {ffmpeg_exe}")
 
@@ -25,9 +23,9 @@ class QuranBot(commands.Bot):
         self.ffmpeg_exe = ffmpeg_exe
 
     async def setup_hook(self):
-        # هنا نحمّل ونسجّل الـ cog الخاص بالتشغيل
+        # تحميل Cog الخاص بالتشغيل
         await self.add_cog(Player(self))
-        # ثم نزامن أوامر السلاش
+        # مزامنة أوامر السلاش مع Discord
         await self.tree.sync()
         logger.info("Synced slash commands")
 
