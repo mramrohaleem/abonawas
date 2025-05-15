@@ -14,10 +14,8 @@ class Player(commands.Cog):
         self.bot = bot
         self.logger = setup_logger()
         self.downloader = Downloader(self.logger)
-
-        # خزن مرّة واحدة الـ View هنا
         self.controls = PlayerControls(self)
-
+        self.bot.add_view(self.controls)
         self.players: dict[int, dict] = {}
 
     def get_state(self, guild_id: int) -> dict:
@@ -34,7 +32,6 @@ class Player(commands.Cog):
     async def stream(self, ctx: commands.Context, url: str):
         if not ctx.author.voice or not ctx.author.voice.channel:
             return await ctx.send("You must be in a voice channel.")
-
         st = self.get_state(ctx.guild.id)
         st["queue"].append(url)
         self.logger.info(f"[{ctx.guild.id}] Queued URL: {url}")
@@ -52,7 +49,6 @@ class Player(commands.Cog):
         st = self.get_state(ctx.guild.id)
         if st["timer_task"]:
             st["timer_task"].cancel()
-
         if not st["queue"]:
             await self._cleanup(ctx.guild.id)
             return
@@ -77,11 +73,16 @@ class Player(commands.Cog):
             )
             self.logger.info(f"[{ctx.guild.id}] Started playback of {path}")
         except Exception as e:
-            self.logger.error(f"[{ctx.guild.id}] Play failed: {e}", exc_info=True)
+            self.logger.error(f"[{ctx.guild.id}] Failed to play: {e}", exc_info=True)
 
+        # build/update embed
         audio = MP3(path)
         dur = int(audio.info.length)
-        embed = Embed(title=path.split("/")[-1], description="Now playing", color=discord.Color.blurple())
+        embed = Embed(
+            title=path.split("/")[-1],
+            description="Now playing",
+            color=discord.Color.blurple()
+        )
         embed.add_field(name="Duration", value=self._format_time(dur), inline=True)
         embed.add_field(name="Elapsed", value="00:00", inline=True)
         embed.add_field(name="Queue Length", value=str(len(st["queue"])), inline=True)
@@ -90,8 +91,10 @@ class Player(commands.Cog):
             msg = await ctx.send(embed=embed, view=self.controls)
             st["embed_msg"] = msg
         else:
-            await st["embed_msg"].edit(embed=embed)
+            # هنا نمرّر الـ view لضمان بقاء الأزرار
+            await st["embed_msg"].edit(embed=embed, view=self.controls)
 
+        # start elapsed timer
         st["timer_task"] = self.bot.loop.create_task(self._update_timer(ctx.guild.id, dur))
 
     async def _after_play(self, ctx: commands.Context, error):
@@ -106,7 +109,8 @@ class Player(commands.Cog):
             elapsed = int((datetime.utcnow() - start).total_seconds())
             embed = st["embed_msg"].embeds[0]
             embed.set_field_at(1, name="Elapsed", value=self._format_time(elapsed), inline=True)
-            await st["embed_msg"].edit(embed=embed)
+            # مرّر view هنا أيضاً
+            await st["embed_msg"].edit(embed=embed, view=self.controls)
             await asyncio.sleep(10)
 
     async def resume(self, interaction: discord.Interaction):
