@@ -7,11 +7,9 @@ if TYPE_CHECKING:
     from cogs.player import Player
 
 class PlayerControls(View):
-    """
-    A persistent View containing playback control buttons.
-    """
+    """Persistent playback controls View."""
     def __init__(self, player: "Player"):
-        super().__init__(timeout=None)  # persistent
+        super().__init__(timeout=None)  # لا تنتهي صلاحية الـ View
         self.player = player
 
     @ui.button(emoji="▶️", style=ButtonStyle.green, custom_id="qbot_play")
@@ -29,3 +27,4 @@ class PlayerControls(View):
     @ui.button(emoji="⏹️", style=ButtonStyle.red, custom_id="qbot_stop")
     async def stop(self, button: Button, interaction: discord.Interaction):
         await self.player.stop(interaction)
+
