@@ -1,5 +1,3 @@
-# nixpacks.toml
-
+# Install ffmpeg in the container before Python setup
 [phases.setup]
-# قبل ما يركّب بايثون، يثبت ffmpeg من nixpkgs
 packages = ["ffmpeg"]
