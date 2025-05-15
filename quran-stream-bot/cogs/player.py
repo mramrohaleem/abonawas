@@ -83,7 +83,7 @@ class Player(commands.Cog):
         dur = int(audio.info.length)
         embed = Embed(
             title=path.split("/")[-1],
-            description=f"Now playing",
+            description="Now playing",
             color=discord.Color.blurple()
         )
         embed.add_field(name="Duration", value=self._format_time(dur), inline=True)
@@ -164,5 +164,9 @@ class Player(commands.Cog):
         m, s = divmod(seconds, 60)
         return f"{m:02d}:{s:02d}"
 
-def setup(bot: commands.Bot):
-    bot.add_cog(Player(bot))
+#  ← هنا التعديل!
+async def setup(bot: commands.Bot):
+    """
+    Extension entry point.
+    """
+    await bot.add_cog(Player(bot))
