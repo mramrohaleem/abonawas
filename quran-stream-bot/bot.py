@@ -1,9 +1,9 @@
 import os
 import asyncio
-import subprocess
 import discord
 from discord.ext import commands
 from modules.logger_config import setup_logger
+from imageio_ffmpeg import get_ffmpeg_exe
 
 # Bot intents
 intents = discord.Intents.default()
@@ -13,18 +13,18 @@ intents.message_content = True
 # Central logger
 logger = setup_logger()
 
-# Verify ffmpeg is available
-ffmpeg_ver = subprocess.run(
-    ["ffmpeg", "-version"], capture_output=True, text=True
-).stdout.splitlines()[0]
-logger.info(f"ffmpeg version: {ffmpeg_ver}")
+# Locate the embedded ffmpeg binary
+ffmpeg_exe = get_ffmpeg_exe()
+logger.info(f"Using ffmpeg executable at: {ffmpeg_exe}")
 
 class QuranBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
+        # make ffmpeg path available to cogs
+        self.ffmpeg_exe = ffmpeg_exe
 
     async def setup_hook(self):
-        # Load only the Player cog; `cogs.ui` is imported by Player
+        # Load only the Player cog; PlayerControls comes along
         await self.load_extension("cogs.player")
 
 async def main():
