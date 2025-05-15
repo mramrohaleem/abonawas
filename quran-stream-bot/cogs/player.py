@@ -1,6 +1,8 @@
+# cogs/player.py
+
 import discord
 from discord.ext import commands
-from discord import FFmpegPCMAudio, Embed
+from discord import FFmpegOpusAudio, Embed
 from modules.logger_config import setup_logger
 from modules.downloader import Downloader
 from cogs.ui import PlayerControls
@@ -68,24 +70,25 @@ class Player(commands.Cog):
             await self._cleanup(ctx.guild.id)
             return
 
+        # pop next URL and download
         url = st["queue"].popleft()
         path = await self.downloader.download(url)
         st["current"] = path
 
-        # pre-download next
+        # pre-download next track
         if st["queue"]:
             nxt = st["queue"][0]
             st["download_task"] = asyncio.create_task(self.downloader.download(nxt))
 
-        # prepare audio source with explicit ffmpeg options
-        source = FFmpegPCMAudio(
+        # prepare audio source using FFmpegOpusAudio
+        source = FFmpegOpusAudio(
             path,
             executable=self.bot.ffmpeg_exe,
             before_options="-nostdin",
             options="-vn"
         )
 
-        # try to start playback and log any errors
+        # attempt playback
         try:
             st["vc"].play(
                 source,
@@ -98,7 +101,7 @@ class Player(commands.Cog):
                 exc_info=True
             )
 
-        # build embed
+        # build or update embed
         audio = MP3(path)
         dur = int(audio.info.length)
         embed = Embed(
