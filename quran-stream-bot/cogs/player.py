@@ -1,3 +1,5 @@
+# cogs/player.py
+
 import discord
 from discord.ext import commands
 from discord import FFmpegOpusAudio, Embed
@@ -84,7 +86,7 @@ class Player(commands.Cog):
         except Exception as e:
             self.logger.error(f"[{ctx.guild.id}] Failed to play: {e}", exc_info=True)
 
-        # تحضير الـ Embed
+        # إعداد الـ Embed
         audio = MP3(path)
         dur = int(audio.info.length)
         embed = Embed(
@@ -96,7 +98,7 @@ class Player(commands.Cog):
         embed.add_field(name="Elapsed", value="00:00", inline=True)
         embed.add_field(name="Queue Length", value=str(len(st["queue"])), inline=True)
 
-        # إرسال الرسالة مرة واحدة أو تحديثها
+        # أرسل الرسالة مرة واحدة أو حدّثها
         if not st["embed_msg"]:
             msg = await ctx.send(embed=embed, view=self.controls)
             st["embed_msg"] = msg
@@ -120,13 +122,14 @@ class Player(commands.Cog):
             await st["embed_msg"].edit(embed=embed)
             await asyncio.sleep(10)
 
+    # الآن نستخدم defer_update() للاعتراف بالـ interaction
     async def resume(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
         vc = st["vc"]
         if vc and vc.is_paused():
             vc.resume()
             self.logger.info(f"[{interaction.guild.id}] Resumed playback")
-        await interaction.response.defer()
+        await interaction.response.defer_update()
 
     async def pause(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
@@ -134,7 +137,7 @@ class Player(commands.Cog):
         if vc and vc.is_playing():
             vc.pause()
             self.logger.info(f"[{interaction.guild.id}] Paused playback")
-        await interaction.response.defer()
+        await interaction.response.defer_update()
 
     async def skip(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
@@ -142,7 +145,7 @@ class Player(commands.Cog):
         if vc and vc.is_playing():
             vc.stop()
             self.logger.info(f"[{interaction.guild.id}] Skipped track")
-        await interaction.response.defer()
+        await interaction.response.defer_update()
 
     async def stop(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
@@ -154,7 +157,7 @@ class Player(commands.Cog):
         if st["timer_task"]:
             st["timer_task"].cancel()
         self.logger.info(f"[{interaction.guild.id}] Stopped and cleared queue")
-        await interaction.response.defer()
+        await interaction.response.defer_update()
 
     async def _cleanup(self, guild_id: int):
         st = self.get_state(guild_id)
@@ -170,6 +173,6 @@ class Player(commands.Cog):
         m, s = divmod(seconds, 60)
         return f"{m:02d}:{s:02d}"
 
-# Extension entrypoint for discord.py 2.x
+# entrypoint
 async def setup(bot: commands.Bot):
     await bot.add_cog(Player(bot))
