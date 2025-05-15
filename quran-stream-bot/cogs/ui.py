@@ -11,7 +11,7 @@ class PlayerControls(View):
     A persistent View containing playback control buttons.
     """
     def __init__(self, player: "Player"):
-        super().__init__(timeout=None)  # timeout=None -> persistent
+        super().__init__(timeout=None)  # persistent
         self.player = player
 
     @ui.button(emoji="▶️", style=ButtonStyle.green, custom_id="qbot_play")
