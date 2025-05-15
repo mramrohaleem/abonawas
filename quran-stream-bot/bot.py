@@ -17,9 +17,9 @@ class QuranBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # يتم استدعاؤها أوتوماتيكيًا قبل الاتصال بالـ Gateway
+        # يُحمّل فقط الـ Player cog
         await self.load_extension("cogs.player")
-        await self.load_extension("cogs.ui")
+        # لا حاجة لتحميل cogs.ui كونه ليس امتداداً مستقلاً
 
 async def main():
     bot = QuranBot()
