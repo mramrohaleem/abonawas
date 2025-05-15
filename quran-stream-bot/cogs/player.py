@@ -1,5 +1,3 @@
-# cogs/player.py
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -18,7 +16,6 @@ class Player(commands.Cog):
         self.bot = bot
         self.logger = setup_logger()
         self.downloader = Downloader(self.logger)
-        # per-guild playback state
         self.players: dict[int, dict] = {}
 
     def get_state(self, guild_id: int) -> dict:
@@ -33,9 +30,9 @@ class Player(commands.Cog):
 
     @app_commands.command(
         name="stream",
-        description="Stream an MP3 URL into your voice channel"
+        description="أضف رابط MP3 إلى الطابور وابدأ التشغيل"
     )
-    @app_commands.describe(url="Direct URL to an MP3 file")
+    @app_commands.describe(url="رابط مباشر لملف MP3")
     async def slash_stream(self, interaction: discord.Interaction, url: str):
         if not interaction.user.voice or not interaction.user.voice.channel:
             return await interaction.response.send_message(
@@ -60,7 +57,7 @@ class Player(commands.Cog):
 
     @app_commands.command(
         name="play",
-        description="Play or resume the current track"
+        description="تشغيل أو استئناف المسار الحالي من الطابور"
     )
     async def slash_play(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild_id)
@@ -70,7 +67,7 @@ class Player(commands.Cog):
             vc.resume()
             self.logger.info(f"[{interaction.guild_id}] Resumed via /play")
             return await interaction.response.send_message(
-                "▶️ Resumed playback", ephemeral=True
+                "▶️ استُؤنف التشغيل", ephemeral=True
             )
 
         if (not vc or not vc.is_playing()) and st["queue"]:
@@ -79,12 +76,12 @@ class Player(commands.Cog):
             return
 
         await interaction.response.send_message(
-            "Nothing is paused or in the queue to play.", ephemeral=True
+            "لا يوجد شيء مُوقوف أو في الطابور ليتم تشغيله.", ephemeral=True
         )
 
     @app_commands.command(
         name="pause",
-        description="Pause the current track"
+        description="إيقاف المسار الجاري مؤقتًا"
     )
     async def slash_pause(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild_id)
@@ -95,11 +92,11 @@ class Player(commands.Cog):
             )
         vc.pause()
         self.logger.info(f"[{interaction.guild_id}] Paused via /pause")
-        await interaction.response.send_message("⏸️ Paused playback", ephemeral=True)
+        await interaction.response.send_message("⏸️ تم الإيقاف مؤقتًا", ephemeral=True)
 
     @app_commands.command(
         name="skip",
-        description="Skip to the next track"
+        description="تخطي إلى المسار التالي"
     )
     async def slash_skip(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild_id)
@@ -110,11 +107,11 @@ class Player(commands.Cog):
             )
         vc.stop()
         self.logger.info(f"[{interaction.guild_id}] Skipped via /skip")
-        await interaction.response.send_message("⏭️ Skipped track", ephemeral=True)
+        await interaction.response.send_message("⏭️ تم التخطي", ephemeral=True)
 
     @app_commands.command(
         name="stop",
-        description="Stop playback and clear the queue"
+        description="إيقاف التشغيل ومسح الطابور"
     )
     async def slash_stop(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild_id)
@@ -128,25 +125,25 @@ class Player(commands.Cog):
             st["timer_task"].cancel()
         self.logger.info(f"[{interaction.guild_id}] Stopped via /stop")
         await interaction.response.send_message(
-            "⏹️ Stopped playback and cleared queue", ephemeral=True
+            "⏹️ تم الإيقاف ومسح الطابور", ephemeral=True
         )
 
     @app_commands.command(
         name="help",
-        description="Show help for all commands"
+        description="عرض قائمة الأوامر المتاحة"
     )
     async def slash_help(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="Quran Stream Bot — Help",
+            title="📖 دليل استخدام البوت",
             color=discord.Color.green()
         )
         cmds = {
-            "/stream [url]": "Stream a direct MP3 URL into your voice channel",
-            "/play": "Play or resume the current track",
-            "/pause": "Pause the current track",
-            "/skip": "Skip to the next track",
-            "/stop": "Stop playback and clear the queue",
-            "/help": "Show this help message"
+            "/stream [url]": "أضف رابط MP3 إلى الطابور وابدأ التشغيل",
+            "/play": "تشغيل أو استئناف المسار الحالي من الطابور",
+            "/pause": "إيقاف المسار الجاري مؤقتًا",
+            "/skip": "تخطي إلى المسار التالي",
+            "/stop": "إيقاف التشغيل ومسح الطابور",
+            "/help": "عرض قائمة الأوامر المتاحة"
         }
         for name, desc in cmds.items():
             embed.add_field(name=name, value=desc, inline=False)
@@ -199,7 +196,9 @@ class Player(commands.Cog):
         else:
             await st["message"].edit(embed=embed)
 
-        st["timer_task"] = self.bot.loop.create_task(self._update_timer(interaction.guild_id, dur))
+        st["timer_task"] = self.bot.loop.create_task(
+            self._update_timer(interaction.guild_id, dur)
+        )
 
     async def _after_play(self, interaction: discord.Interaction, error):
         if error:
