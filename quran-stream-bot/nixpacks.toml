@@ -1,5 +1,3 @@
-# nixpacks.toml
-
+# تثبيت FFmpeg و Opus system package قبل إعداد بايثون
 [phases.setup]
-# before Python: install ffmpeg (decode) + libopus (encode)
-packages = ["ffmpeg", "libopus"]
+packages = ["ffmpeg", "opus"]
