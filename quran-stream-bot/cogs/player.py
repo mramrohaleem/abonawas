@@ -14,8 +14,8 @@ class Player(commands.Cog):
         self.bot = bot
         self.logger = setup_logger()
         self.downloader = Downloader(self.logger)
+        # أنشئ الـ View لكن لا تسجّله هنا
         self.controls = PlayerControls(self)
-        self.bot.add_view(self.controls)
         self.players: dict[int, dict] = {}
 
     def get_state(self, guild_id: int) -> dict:
@@ -32,6 +32,7 @@ class Player(commands.Cog):
     async def stream(self, ctx: commands.Context, url: str):
         if not ctx.author.voice or not ctx.author.voice.channel:
             return await ctx.send("You must be in a voice channel.")
+
         st = self.get_state(ctx.guild.id)
         st["queue"].append(url)
         self.logger.info(f"[{ctx.guild.id}] Queued URL: {url}")
@@ -49,6 +50,7 @@ class Player(commands.Cog):
         st = self.get_state(ctx.guild.id)
         if st["timer_task"]:
             st["timer_task"].cancel()
+
         if not st["queue"]:
             await self._cleanup(ctx.guild.id)
             return
@@ -75,7 +77,6 @@ class Player(commands.Cog):
         except Exception as e:
             self.logger.error(f"[{ctx.guild.id}] Failed to play: {e}", exc_info=True)
 
-        # build/update embed
         audio = MP3(path)
         dur = int(audio.info.length)
         embed = Embed(
@@ -91,10 +92,8 @@ class Player(commands.Cog):
             msg = await ctx.send(embed=embed, view=self.controls)
             st["embed_msg"] = msg
         else:
-            # هنا نمرّر الـ view لضمان بقاء الأزرار
             await st["embed_msg"].edit(embed=embed, view=self.controls)
 
-        # start elapsed timer
         st["timer_task"] = self.bot.loop.create_task(self._update_timer(ctx.guild.id, dur))
 
     async def _after_play(self, ctx: commands.Context, error):
@@ -109,31 +108,27 @@ class Player(commands.Cog):
             elapsed = int((datetime.utcnow() - start).total_seconds())
             embed = st["embed_msg"].embeds[0]
             embed.set_field_at(1, name="Elapsed", value=self._format_time(elapsed), inline=True)
-            # مرّر view هنا أيضاً
             await st["embed_msg"].edit(embed=embed, view=self.controls)
             await asyncio.sleep(10)
 
     async def resume(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
-        vc = st["vc"]
-        if vc and vc.is_paused():
-            vc.resume()
+        if st["vc"] and st["vc"].is_paused():
+            st["vc"].resume()
             self.logger.info(f"[{interaction.guild.id}] Resumed playback")
         await interaction.response.defer_update()
 
     async def pause(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
-        vc = st["vc"]
-        if vc and vc.is_playing():
-            vc.pause()
+        if st["vc"] and st["vc"].is_playing():
+            st["vc"].pause()
             self.logger.info(f"[{interaction.guild.id}] Paused playback")
         await interaction.response.defer_update()
 
     async def skip(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
-        vc = st["vc"]
-        if vc and vc.is_playing():
-            vc.stop()
+        if st["vc"] and st["vc"].is_playing():
+            st["vc"].stop()
             self.logger.info(f"[{interaction.guild.id}] Skipped track")
         await interaction.response.defer_update()
 
