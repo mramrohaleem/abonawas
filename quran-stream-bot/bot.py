@@ -4,27 +4,35 @@ import discord
 from discord.ext import commands
 from modules.logger_config import setup_logger
 from imageio_ffmpeg import get_ffmpeg_exe
+import discord.opus
 
-# Bot intents
+# إعداد الصلاحيات التي يحتاجها البوت
 intents = discord.Intents.default()
 intents.voice_states = True
 intents.message_content = True
 
-# Central logger
+# تهيئة الـ logger المركزي
 logger = setup_logger()
 
-# Locate the embedded ffmpeg binary
+# تحديد مسار ffmpeg المضمّن
 ffmpeg_exe = get_ffmpeg_exe()
 logger.info(f"Using ffmpeg executable at: {ffmpeg_exe}")
+
+# محاولة تحميل مكتبة Opus C
+try:
+    discord.opus.load_opus("libopus.so.0")
+    logger.info("Successfully loaded libopus.so.0")
+except Exception as e:
+    logger.error(f"Could not load Opus library: {e}", exc_info=True)
 
 class QuranBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
-        # make ffmpeg path available to cogs
+        # حفظ مسار ffmpeg لتمريره للـ Cog
         self.ffmpeg_exe = ffmpeg_exe
 
     async def setup_hook(self):
-        # Load only the Player cog; PlayerControls comes along
+        # تحميل الـ Player cog فقط
         await self.load_extension("cogs.player")
 
 async def main():
