@@ -17,15 +17,17 @@ class Player(commands.Cog):
         self.bot = bot
         self.logger = setup_logger()
         self.downloader = Downloader(self.logger)
+        # single persistent View instance
+        self.controls = PlayerControls(self)
+        # register it so discord.py listens to its custom_ids
+        self.bot.add_view(self.controls)
         # per-guild playback state
         self.players: dict[int, dict] = {}
 
-        # سجّل View مرة واحدة عند الإقلاع
-        self.bot.add_view(PlayerControls(self))
-
     def get_state(self, guild_id: int) -> dict:
         """
-        Ensure a state dict exists for guild and register its View.
+        Ensure a state dict exists for guild.
+        We reuse the same self.controls for all guilds.
         """
         state = self.players.setdefault(guild_id, {
             "queue": deque(),
@@ -34,8 +36,6 @@ class Player(commands.Cog):
             "embed_msg": None,
             "timer_task": None,
             "download_task": None,
-            # لكل guild نستخدم نفس الـ View المسجّل آنفًا
-            "controls": PlayerControls(self)
         })
         return state
 
@@ -60,27 +60,34 @@ class Player(commands.Cog):
     async def _play_next(self, ctx: commands.Context):
         st = self.get_state(ctx.guild.id)
 
+        # cancel any previous timer
         if st["timer_task"]:
             st["timer_task"].cancel()
 
+        # if queue empty, clean up
         if not st["queue"]:
             await self._cleanup(ctx.guild.id)
             return
 
+        # pop next URL and download
         url = st["queue"].popleft()
         path = await self.downloader.download(url)
         st["current"] = path
 
+        # pre-download next track
         if st["queue"]:
             nxt = st["queue"][0]
             st["download_task"] = asyncio.create_task(self.downloader.download(nxt))
 
+        # prepare audio source
         source = FFmpegOpusAudio(
             path,
             executable=self.bot.ffmpeg_exe,
             before_options="-nostdin",
             options="-vn"
         )
+
+        # attempt playback
         try:
             st["vc"].play(
                 source,
@@ -90,7 +97,7 @@ class Player(commands.Cog):
         except Exception as e:
             self.logger.error(f"[{ctx.guild.id}] Failed to play: {e}", exc_info=True)
 
-        # إعداد الـ Embed
+        # build/update embed
         audio = MP3(path)
         dur = int(audio.info.length)
         embed = Embed(
@@ -102,15 +109,14 @@ class Player(commands.Cog):
         embed.add_field(name="Elapsed", value="00:00", inline=True)
         embed.add_field(name="Queue Length", value=str(len(st["queue"])), inline=True)
 
-        # إن لم تُرسَل الرسالة بعد: أرسلها مع View
+        # send once or edit existing
         if not st["embed_msg"]:
-            msg = await ctx.send(embed=embed, view=st["controls"])
+            msg = await ctx.send(embed=embed, view=self.controls)
             st["embed_msg"] = msg
         else:
-            # خلاف ذلك حدّث الرسالة القديمة فقط
             await st["embed_msg"].edit(embed=embed)
 
-        # ابدأ المؤقت لتحديث الوقت المنصرم
+        # start elapsed timer
         st["timer_task"] = self.bot.loop.create_task(self._update_timer(ctx.guild.id, dur))
 
     async def _after_play(self, ctx: commands.Context, error):
@@ -178,6 +184,6 @@ class Player(commands.Cog):
         m, s = divmod(seconds, 60)
         return f"{m:02d}:{s:02d}"
 
-# entrypoint
+# Extension entrypoint for discord.py 2.x
 async def setup(bot: commands.Bot):
     await bot.add_cog(Player(bot))
