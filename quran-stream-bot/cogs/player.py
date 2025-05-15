@@ -1,5 +1,3 @@
-# cogs/player.py
-
 import discord
 from discord.ext import commands
 from discord import FFmpegOpusAudio, Embed
@@ -12,19 +10,14 @@ from collections import deque
 from datetime import datetime
 
 class Player(commands.Cog):
-    """
-    Cog managing the playback queue, voice client, and UI updates.
-    """
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.logger = setup_logger()
         self.downloader = Downloader(self.logger)
 
-        # أنشئ View واحدة و سجّلها persistent
+        # خزن مرّة واحدة الـ View هنا
         self.controls = PlayerControls(self)
-        self.bot.add_view(self.controls)
 
-        # حالة كل سيرفر
         self.players: dict[int, dict] = {}
 
     def get_state(self, guild_id: int) -> dict:
@@ -84,21 +77,15 @@ class Player(commands.Cog):
             )
             self.logger.info(f"[{ctx.guild.id}] Started playback of {path}")
         except Exception as e:
-            self.logger.error(f"[{ctx.guild.id}] Failed to play: {e}", exc_info=True)
+            self.logger.error(f"[{ctx.guild.id}] Play failed: {e}", exc_info=True)
 
-        # إعداد الـ Embed
         audio = MP3(path)
         dur = int(audio.info.length)
-        embed = Embed(
-            title=path.split("/")[-1],
-            description="Now playing",
-            color=discord.Color.blurple()
-        )
+        embed = Embed(title=path.split("/")[-1], description="Now playing", color=discord.Color.blurple())
         embed.add_field(name="Duration", value=self._format_time(dur), inline=True)
         embed.add_field(name="Elapsed", value="00:00", inline=True)
         embed.add_field(name="Queue Length", value=str(len(st["queue"])), inline=True)
 
-        # أرسل الرسالة مرة واحدة أو حدّثها
         if not st["embed_msg"]:
             msg = await ctx.send(embed=embed, view=self.controls)
             st["embed_msg"] = msg
@@ -122,7 +109,6 @@ class Player(commands.Cog):
             await st["embed_msg"].edit(embed=embed)
             await asyncio.sleep(10)
 
-    # الآن نستخدم defer_update() للاعتراف بالـ interaction
     async def resume(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
         vc = st["vc"]
@@ -173,6 +159,5 @@ class Player(commands.Cog):
         m, s = divmod(seconds, 60)
         return f"{m:02d}:{s:02d}"
 
-# entrypoint
 async def setup(bot: commands.Bot):
     await bot.add_cog(Player(bot))
