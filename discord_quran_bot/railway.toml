@@ -1,5 +1,0 @@
-[build]
-  command = "pip install -r requirements.txt"
-
-[deploy]
-  command = "gunicorn bot:app -b 0.0.0.0:$PORT"

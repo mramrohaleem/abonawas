@@ -1,6 +1,0 @@
-discord.py
-yt-dlp
-gunicorn
-flake8
-pre-commit
-pytest
