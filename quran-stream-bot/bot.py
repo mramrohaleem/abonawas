@@ -1,31 +1,31 @@
 import os
-import subprocess
-# بعد تهيئة logger مباشرة
-ffmpeg_ver = subprocess.run(
-    ["ffmpeg", "-version"], capture_output=True, text=True
-).stdout.splitlines()[0]
-logger.info(f"ffmpeg version: {ffmpeg_ver}")
 import asyncio
+import subprocess
 import discord
 from discord.ext import commands
 from modules.logger_config import setup_logger
 
-# إعداد الصلاحيات التي يحتاجها البوت
+# Bot intents
 intents = discord.Intents.default()
 intents.voice_states = True
 intents.message_content = True
 
-# تهيئة الـ logger المركزي
+# Central logger
 logger = setup_logger()
+
+# Verify ffmpeg is available
+ffmpeg_ver = subprocess.run(
+    ["ffmpeg", "-version"], capture_output=True, text=True
+).stdout.splitlines()[0]
+logger.info(f"ffmpeg version: {ffmpeg_ver}")
 
 class QuranBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # يُحمّل فقط الـ Player cog
+        # Load only the Player cog; `cogs.ui` is imported by Player
         await self.load_extension("cogs.player")
-        # لا حاجة لتحميل cogs.ui كونه ليس امتداداً مستقلاً
 
 async def main():
     bot = QuranBot()
