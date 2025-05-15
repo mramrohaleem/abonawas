@@ -5,28 +5,25 @@ from discord.ext import commands
 from modules.logger_config import setup_logger
 from imageio_ffmpeg import get_ffmpeg_exe
 
-intents = discord.Intents.default()
-intents.voice_states = True
-intents.message_content = True
-
 logger = setup_logger()
 
+# FFmpeg binary for audio encoding
 ffmpeg_exe = get_ffmpeg_exe()
 logger.info(f"Using ffmpeg executable at: {ffmpeg_exe}")
 
 class QuranBot(commands.Bot):
     def __init__(self):
+        intents = discord.Intents.default()
+        intents.voice_states = True
         super().__init__(command_prefix="!", intents=intents)
         self.ffmpeg_exe = ffmpeg_exe
 
     async def setup_hook(self):
-        # 1) حمّل كوج الـ Player
-        await self.load_extension("cogs.player")
-        # 2) سجّل view بعد انتهاء التحميل
-        player = self.get_cog("Player")
-        if player:
-            self.add_view(player.controls)
-            logger.info("Registered persistent PlayerControls view")
+        # Load the Player cog (which registers slash commands)
+        await self.add_cog(Player(self))
+        # Sync slash commands with Discord
+        await self.tree.sync()
+        logger.info("Synced slash commands")
 
 async def main():
     bot = QuranBot()
