@@ -58,14 +58,16 @@ class Player(commands.Cog):
 
     async def _play_next(self, ctx: commands.Context):
         st = self.get_state(ctx.guild.id)
+        # cancel any previous timer
         if st["timer_task"]:
             st["timer_task"].cancel()
+        # if queue empty, clean up
         if not st["queue"]:
             await self._cleanup(ctx.guild.id)
             return
 
         url = st["queue"].popleft()
-        # download current
+        # download current track
         path = await self.downloader.download(url)
         st["current"] = path
 
@@ -74,9 +76,15 @@ class Player(commands.Cog):
             nxt = st["queue"][0]
             st["download_task"] = asyncio.create_task(self.downloader.download(nxt))
 
-        # prepare audio source
-        source = FFmpegPCMAudio(path)
+        # prepare audio source with explicit ffmpeg options
+        source = FFmpegPCMAudio(
+            path,
+            executable="ffmpeg",
+            before_options="-nostdin",
+            options="-vn"
+        )
         st["vc"].play(source, after=lambda e: self.bot.loop.create_task(self._after_play(ctx, e)))
+        self.logger.info(f"[{ctx.guild.id}] Started playback of {path}")
 
         # build embed
         audio = MP3(path)
@@ -119,24 +127,24 @@ class Player(commands.Cog):
         vc = st["vc"]
         if vc and vc.is_paused():
             vc.resume()
-            await interaction.response.defer()
             self.logger.info(f"[{interaction.guild.id}] Resumed playback")
+        await interaction.response.defer()
 
     async def pause(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
         vc = st["vc"]
         if vc and vc.is_playing():
             vc.pause()
-            await interaction.response.defer()
             self.logger.info(f"[{interaction.guild.id}] Paused playback")
+        await interaction.response.defer()
 
     async def skip(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
         vc = st["vc"]
         if vc and vc.is_playing():
             vc.stop()
-            await interaction.response.defer()
             self.logger.info(f"[{interaction.guild.id}] Skipped track")
+        await interaction.response.defer()
 
     async def stop(self, interaction: discord.Interaction):
         st = self.get_state(interaction.guild.id)
@@ -147,8 +155,8 @@ class Player(commands.Cog):
         st["current"] = None
         if st["timer_task"]:
             st["timer_task"].cancel()
-        await interaction.response.defer()
         self.logger.info(f"[{interaction.guild.id}] Stopped and cleared queue")
+        await interaction.response.defer()
 
     async def _cleanup(self, guild_id: int):
         st = self.get_state(guild_id)
@@ -164,9 +172,7 @@ class Player(commands.Cog):
         m, s = divmod(seconds, 60)
         return f"{m:02d}:{s:02d}"
 
-#  ← هنا التعديل!
+# Extension entrypoint must be async in discord.py 2.x
 async def setup(bot: commands.Bot):
-    """
-    Extension entry point.
-    """
     await bot.add_cog(Player(bot))
+
