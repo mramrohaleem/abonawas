@@ -1,3 +1,5 @@
+# cogs/player.py
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -114,6 +116,11 @@ class Player(commands.Cog):
         description="إيقاف التشغيل ومسح الطابور"
     )
     async def slash_stop(self, interaction: discord.Interaction):
+        # رد فوري لتجنب "did not respond"
+        await interaction.response.send_message(
+            "⏹️ تم الإيقاف ومسح الطابور", ephemeral=True
+        )
+        # منطق الإيقاف والتنظيف بعد الرد
         st = self.get_state(interaction.guild_id)
         vc = st["vc"]
         if vc:
@@ -124,9 +131,6 @@ class Player(commands.Cog):
         if st["timer_task"]:
             st["timer_task"].cancel()
         self.logger.info(f"[{interaction.guild_id}] Stopped via /stop")
-        await interaction.response.send_message(
-            "⏹️ تم الإيقاف ومسح الطابور", ephemeral=True
-        )
 
     @app_commands.command(
         name="help",
@@ -151,10 +155,8 @@ class Player(commands.Cog):
 
     async def _play_next(self, interaction: discord.Interaction, is_initial: bool):
         st = self.get_state(interaction.guild_id)
-
         if st["timer_task"]:
             st["timer_task"].cancel()
-
         if not st["queue"]:
             if st["vc"]:
                 await st["vc"].disconnect()
