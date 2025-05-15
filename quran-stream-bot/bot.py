@@ -1,4 +1,10 @@
 import os
+import subprocess
+# بعد تهيئة logger مباشرة
+ffmpeg_ver = subprocess.run(
+    ["ffmpeg", "-version"], capture_output=True, text=True
+).stdout.splitlines()[0]
+logger.info(f"ffmpeg version: {ffmpeg_ver}")
 import asyncio
 import discord
 from discord.ext import commands
