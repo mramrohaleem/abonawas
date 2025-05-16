@@ -1,61 +1,79 @@
-# modules/downloader.py
-
 import os
 import asyncio
 import aiohttp
 from pathlib import Path
 from yt_dlp import YoutubeDL, DownloadError
-from imageio_ffmpeg import get_ffmpeg_exe   # ← للحصول على ffmpeg المُضمَّن
+from imageio_ffmpeg import get_ffmpeg_exe  # المسار المدمج لـ FFmpeg
 
-# مسار FFmpeg المدمج في imageio-ffmpeg
 FFMPEG_PATH = get_ffmpeg_exe()
 
-# مجلد التنزيلات المحلي
 DOWNLOADS_DIR = Path("downloads")
 DOWNLOADS_DIR.mkdir(exist_ok=True)
 
-# ملف الكوكيز: إمّا cookies.txt في الجذر أو مسار يُحدَّد بمتغيّر YT_COOKIES
+# ملف الكوكيز (أو عيِّن متغيّر YT_COOKIES)
 COOKIE_FILE = Path(os.getenv("YT_COOKIES", "cookies.txt"))
 
 class Downloader:
-    """تنزيل مباشر أو عبر yt-dlp وتحويل إلى mp3 باستخدام FFmpeg."""
+    """
+    تنزيل مباشر .mp3 أو استخراج الصوت من YouTube/قائمة تشغيل.
+    - عند تمرير رابط Playlist: تُعاد قائمة URLs للعناصر الفرعية.
+    - عند تمرير فيديو/MP3 مفرد: يُعاد الـ path المحلي للـ MP3.
+    """
     def __init__(self, logger):
         self.logger = logger
 
-    async def download(self, url: str) -> str:
-        """واجهة عامّة: تعيد المسار المحلي للملف الصوتي."""
+    async def download(self, url: str):
+        """واجهة استدعاء من بقية الكود."""
         if url.lower().endswith(".mp3"):
             return await self._download_http(url)
-        # yt-dlp قد يستهلك وقتاً → نشغّله في خيط منفصل
         return await asyncio.to_thread(self._download_with_ytdlp, url)
 
-    # ---------- تنزيل HTTP مباشر ----------
+    # ---------- تنزيل HTTP ----------
     async def _download_http(self, url: str) -> str:
         filename = url.split("/")[-1].split("?")[0] or "file.mp3"
-        local_path = DOWNLOADS_DIR / filename
-        if local_path.exists():
-            self.logger.info(f"🎧 ملف موجود مسبقاً: {local_path}")
-            return str(local_path)
+        path = DOWNLOADS_DIR / filename
+        if path.exists():
+            self.logger.info(f"🎧 موجود بالكاش: {path}")
+            return str(path)
 
         self.logger.info(f"⬇️ تنزيل مباشر: {url}")
-        async with aiohttp.ClientSession() as sess, sess.get(url) as resp:
-            resp.raise_for_status()
-            with open(local_path, "wb") as f:
-                while chunk := await resp.content.read(16 * 1024):
+        async with aiohttp.ClientSession() as s, s.get(url) as r:
+            r.raise_for_status()
+            with open(path, "wb") as f:
+                while chunk := await r.content.read(16 * 1024):
                     f.write(chunk)
-        self.logger.info(f"✅ تم الحفظ: {local_path}")
-        return str(local_path)
+        self.logger.info(f"✅ تم الحفظ: {path}")
+        return str(path)
 
-    # ---------- تنزيل بواسطة yt-dlp ----------
-    def _download_with_ytdlp(self, url: str) -> str:
-        ytdl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": "downloads/%(id)s.%(ext)s",
+    # ---------- yt-dlp ----------
+    def _download_with_ytdlp(self, url: str):
+        """
+        قد يُعيد:
+        • List[str]  → عند تمرير رابط Playlist (عناصرها كروابط فيديو)
+        • str        → مسار ملف MP3 محمَّل لجهاز واحد
+        """
+        base_opts = {
             "quiet": True,
             "no_warnings": True,
             "geo_bypass": True,
+            "ffmpeg_location": FFMPEG_PATH,
+        }
+
+        # --- إذا كان الرابط Playlist (يحتوي "list=" وليس "watch?") ---
+        if "list=" in url and "watch?" not in url:
+            opts = {**base_opts, "extract_flat": "in_playlist", "skip_download": True}
+            with YoutubeDL(opts) as ydl:
+                info   = ydl.extract_info(url, download=False)
+                videos = [e["url"] for e in info["entries"]]
+                self.logger.info(f"📜 قائمة تشغيل بها {len(videos)} مقطعاً.")
+                return videos    # يرسلها إلى الطابور
+
+        # --- فيديو مفرد ---
+        ytdl_opts = {
+            **base_opts,
+            "format": "bestaudio/best",
+            "outtmpl": "downloads/%(id)s.%(ext)s",
             "noplaylist": True,
-            "ffmpeg_location": FFMPEG_PATH,  # ★ المسار إلى ffmpeg
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
@@ -64,14 +82,14 @@ class Downloader:
         }
         if COOKIE_FILE.exists():
             ytdl_opts["cookiefile"] = str(COOKIE_FILE)
-            self.logger.info("🍪 يستخدم ملف cookies.txt ليوتيوب")
+            self.logger.info("🍪 يستخدم cookies.txt")
 
         try:
             with YoutubeDL(ytdl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                mp3_path = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
-                self.logger.info(f"🎵 تم التنزيل: {mp3_path}")
-                return str(mp3_path)
+                mp3  = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
+                self.logger.info(f"🎵 تم التنزيل: {mp3}")
+                return str(mp3)
         except DownloadError as e:
-            self.logger.error(f"❌ yt-dlp خطأ: {e}")
-            raise RuntimeError("فشل تحميل الرابط؛ تحقّق من الكوكيز أو الرابط") from e
+            self.logger.error(f"❌ yt-dlp: {e}")
+            raise RuntimeError("فشل تحميل الرابط (تأكد من الكوكيز والشبكة).") from e
