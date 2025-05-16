@@ -9,28 +9,29 @@ from collections import deque
 from datetime import datetime
 
 class Player(commands.Cog):
-    """تشغيل التلاوات، قوائم التشغيل، إدارة الطابور، وتنزيل مسبق."""
+    """تشغيل تلاوات، قوائم تشغيل، إدارة طابور مع عناوين وفهرسة."""
     def __init__(self, bot: commands.Bot):
-        self.bot     = bot
-        self.logger  = setup_logger()
-        self.dl      = Downloader(self.logger)
+        self.bot    = bot
+        self.logger = setup_logger()
+        self.dl     = Downloader(self.logger)
         self.states: dict[int, dict] = {}
 
-    # ---------- أدوات حالة ----------
+    # ---------- حالة السيرفر ----------
     def _st(self, gid: int):
         return self.states.setdefault(gid, {
-            "queue": deque(),   # عناصر في الانتظار (URLs أو مسارات)
-            "vc": None,         # VoiceClient
-            "current": None,    # المسار الجاري
-            "timer": None,      # مهمة تحديث الوقت
+            "queue": deque(),   # deque[dict]
+            "index": 0,         # رقم العنصر الجاري (يبدأ 1)
+            "vc": None,
+            "current": None,    # dict {"path"/"url","title"}
+            "timer": None,
             "download_task": None,
-            "msg": None         # رسالة الـ Embed
+            "msg": None
         })
 
-    def _fmt(self, sec: int): m, s = divmod(sec, 60); return f"{m:02}:{s:02}"
+    def _fmt(self, s: int): m, s = divmod(s, 60); return f"{m:02}:{s:02}"
 
     # ---------- أوامر الطابور ----------
-    @app_commands.command(name="queue", description="عرض محتويات طابور التشغيل")
+    @app_commands.command(name="queue", description="عرض طابور التشغيل")
     async def queue(self, i: discord.Interaction):
         st = self._st(i.guild_id)
         if not st["queue"] and not st["current"]:
@@ -38,72 +39,82 @@ class Player(commands.Cog):
 
         embed = discord.Embed(title="قائمة التشغيل", color=0x3498db)
         if st["current"]:
-            embed.add_field(name="▶️ الجاري", value=Path(st["current"]).name, inline=False)
+            embed.add_field(name=f"▶️ {st['index']}.", value=st["current"]["title"], inline=False)
 
-        for idx, item in enumerate(list(st["queue"])[:20], 1):
-            title = item if isinstance(item, str) and not item.startswith("http") else item.split("/")[-1]
-            embed.add_field(name=f"{idx}.", value=title, inline=False)
+        for offs, elem in enumerate(list(st["queue"])[:20], 1):
+            embed.add_field(name=f"{st['index']+offs}.", value=elem["title"], inline=False)
 
         await i.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="jump", description="الانتقال مباشرةً إلى عنصر داخل الطابور")
-    @app_commands.describe(index="رقم العنصر كما يظهر في /queue (يبدأ من 1)")
+    @app_commands.command(name="jump", description="التخطي إلى عنصر محدد")
+    @app_commands.describe(index="رقم العنصر (من /queue)")
     async def jump(self, i: discord.Interaction, index: int):
         st = self._st(i.guild_id)
-        if index < 1 or index > len(st["queue"]):
+        pos = index - st["index"] - 1
+        if pos < 0 or pos >= len(st["queue"]):
             return await i.response.send_message("❌ رقم غير صالح.", ephemeral=True)
-
-        for _ in range(index - 1):
+        for _ in range(pos):
             st["queue"].append(st["queue"].popleft())
         if st["vc"]: st["vc"].stop()
-        await i.response.send_message(f"⏩ تم الانتقال إلى العنصر {index}.", ephemeral=True)
+        await i.response.send_message(f"⏩ انتقلنا إلى {index}.", ephemeral=True)
 
-    # ---------- أمر stream (فيه دعم Playlist) ----------
-    @app_commands.command(name="stream", description="أضف رابط MP3 أو فيديو/قائمة تشغيل YouTube")
-    @app_commands.describe(url="الرابط المطلوب")
+    @app_commands.command(name="restart", description="العودة إلى أول المقطع")
+    async def restart(self, i: discord.Interaction):
+        st = self._st(i.guild_id)
+        if st["index"] == 1:
+            return await i.response.send_message("🔄 بالفعل عند البداية.", ephemeral=True)
+        # أعد العناصر السابقة إلى النهاية
+        for _ in range(st["index"] - 1):
+            st["queue"].appendleft(st["queue"].pop())
+        st["index"] = 0
+        if st["vc"]: st["vc"].stop()
+        await i.response.send_message("⏮️ الرجوع إلى البداية.", ephemeral=True)
+
+    # ---------- أمر stream ----------
+    @app_commands.command(name="stream", description="أضف رابط MP3 أو يوتيوب (فيديو/Playlist)")
+    @app_commands.describe(url="الرابط")
     async def stream(self, i: discord.Interaction, url: str):
         if not i.user.voice or not i.user.voice.channel:
-            return await i.response.send_message("🚫 يلزم الانضمام لقناة صوتية.", ephemeral=True)
+            return await i.response.send_message("🚫 انضم إلى قناة صوتية.", ephemeral=True)
         await i.response.defer(thinking=True)
 
-        st = self._st(i.guild_id)
-        result = await self.dl.download(url)
+        st   = self._st(i.guild_id)
+        res  = await self.dl.download(url)
 
-        # قائمة تشغيل ← قائمة URLs
-        if isinstance(result, list):
-            st["queue"].extend(result)
-            await i.followup.send(f"📜 أُضيف {len(result)} مقطعاً من قائمة التشغيل.", ephemeral=True)
-        else:
-            st["queue"].append(result)  # MP3 مفرد أو فيديو تم تحويله
-            await i.followup.send("✅ أضيف إلى الطابور.", ephemeral=True)
+        if isinstance(res, list):                 # Playlist
+            st["queue"].extend(res)
+            await i.followup.send(f"📜 أضفنا {len(res)} مقطعاً.", ephemeral=True)
+        else:                                     # عنصر مفرد
+            st["queue"].append(res)
+            await i.followup.send("✅ أُضيف للطابور.", ephemeral=True)
 
         if not st["vc"] or not st["vc"].is_connected():
             st["vc"] = await i.user.voice.channel.connect()
         if not st["current"]:
-            await self._play_next(i, first=True)
+            await self._next(i, first=True)
 
-    # ---------- أوامر التحكم الأساسية (play/pause/skip/stop) ----------
-    @app_commands.command(name="play", description="تشغيل أو استئناف الإيقاف المؤقت")
+    # ---------- أوامر التحكم ----------
+    @app_commands.command(name="play", description="تشغيل/استئناف")
     async def play(self, i: discord.Interaction):
         st, vc = self._st(i.guild_id), None
         vc = st["vc"]
         if vc and vc.is_paused():
             vc.resume()
-            return await i.response.send_message("▶️ تم الاستئناف.", ephemeral=True)
+            return await i.response.send_message("▶️ استئناف.", ephemeral=True)
         if (not vc or not vc.is_playing()) and st["queue"]:
             await i.response.defer(thinking=True)
-            await self._play_next(i)
+            await self._next(i)
             return
-        await i.response.send_message("لا يوجد ما يتم تشغيله.", ephemeral=True)
+        await i.response.send_message("لا شيء لتشغيله.", ephemeral=True)
 
-    @app_commands.command(name="pause", description="إيقاف مؤقت للتشغيل")
+    @app_commands.command(name="pause", description="إيقاف مؤقت")
     async def pause(self, i: discord.Interaction):
         st, vc = self._st(i.guild_id), None
         vc = st["vc"]
         if vc and vc.is_playing():
             vc.pause()
-            return await i.response.send_message("⏸️ تم الإيقاف مؤقتًا.", ephemeral=True)
-        await i.response.send_message("⏸️ لا شيء يُشغّل.", ephemeral=True)
+            return await i.response.send_message("⏸️ تم الإيقاف.", ephemeral=True)
+        await i.response.send_message("⏸️ لا شيء يعمل.", ephemeral=True)
 
     @app_commands.command(name="skip", description="تخطي المقطع الحالي")
     async def skip(self, i: discord.Interaction):
@@ -114,19 +125,19 @@ class Player(commands.Cog):
             return await i.response.send_message("⏭️ تم التخطي.", ephemeral=True)
         await i.response.send_message("⏭️ لا شيء يُشغّل.", ephemeral=True)
 
-    @app_commands.command(name="stop", description="إيقاف التشغيل ومسح الطابور")
+    @app_commands.command(name="stop", description="إيقاف ومسح الطابور")
     async def stop(self, i: discord.Interaction):
-        await i.response.send_message("⏹️ تم الإيقاف ومسح الطابور.", ephemeral=True)
+        await i.response.send_message("⏹️ تم الإيقاف.", ephemeral=True)
         st = self._st(i.guild_id)
         if st["vc"]:
             st["vc"].stop()
             await st["vc"].disconnect()
         st["queue"].clear()
+        st.update(index=0, current=None)
         if st["timer"]: st["timer"].cancel()
-        st.update(current=None, msg=None)
 
-    # ---------- التشغيل وتسلسل التنزيل المسبق ----------
-    async def _play_next(self, i: discord.Interaction, first=False):
+    # ---------- تشغيل وتسلسل ----------
+    async def _next(self, i: discord.Interaction, first=False):
         st = self._st(i.guild_id)
         if st["timer"]: st["timer"].cancel()
         if not st["queue"]:
@@ -134,28 +145,34 @@ class Player(commands.Cog):
             st.update(current=None)
             return
 
-        item = st["queue"].popleft()
-        # إذا ما زال رابط فيديو → نزّله الآن
-        if item.startswith("http"):
-            item = await self.dl.download(item)
+        elem = st["queue"].popleft()
+        st["index"] += 1
+        # تنزيل إذا كان رابط فيديو
+        if "path" in elem:
+            path, title = elem["path"], elem["title"]
+        elif elem["url"].startswith("http"):
+            dl = await self.dl.download(elem["url"])
+            path, title = dl["path"], dl["title"]
+        else:  # احتياطي
+            path, title = elem, Path(elem).name
 
-        st["current"] = item
-        # تنزيل العنصر التالي مسبقًا
+        st["current"] = {"path": path, "title": title}
+
+        # تنزيل المقطع التالي مسبقاً
         if st["queue"]:
             nxt = st["queue"][0]
-            if nxt.startswith("http"):
-                st["download_task"] = asyncio.create_task(self.dl.download(nxt))
+            if "url" in nxt:
+                st["download_task"] = asyncio.create_task(self.dl.download(nxt["url"]))
 
-        # التشغيل
-        src = discord.FFmpegOpusAudio(item, executable=self.bot.ffmpeg_exe,
+        src = discord.FFmpegOpusAudio(path, executable=self.bot.ffmpeg_exe,
                                       before_options="-nostdin", options="-vn")
         st["vc"].play(src, after=lambda e: self.bot.loop.create_task(self._after(i, e)))
 
-        audio = MP3(item)
-        dur   = int(audio.info.length)
-        embed = discord.Embed(title=Path(item).name, color=0x2ecc71)
+        dur   = int(MP3(path).info.length)
+        embed = discord.Embed(title=title, color=0x2ecc71)
+        embed.set_footer(text=f"المقطع رقم {st['index']}")
         embed.add_field(name="المدة", value=self._fmt(dur), inline=True)
-        embed.add_field(name="المتبقي بالطابور", value=str(len(st["queue"])), inline=True)
+        embed.add_field(name="بقية الطابور", value=str(len(st["queue"])), inline=True)
 
         if first:
             st["msg"] = await i.followup.send(embed=embed)
@@ -165,8 +182,8 @@ class Player(commands.Cog):
         st["timer"] = self.bot.loop.create_task(self._ticker(i.guild_id, dur))
 
     async def _after(self, i: discord.Interaction, err):
-        if err: self.logger.error(f"خطأ تشغيل: {err}", exc_info=True)
-        await self._play_next(i)
+        if err: self.logger.error(f"خطأ: {err}", exc_info=True)
+        await self._next(i)
 
     async def _ticker(self, gid: int, total: int):
         st = self._st(gid)
@@ -174,7 +191,7 @@ class Player(commands.Cog):
         while st["vc"] and st["vc"].is_playing():
             elapsed = int((datetime.utcnow() - start).total_seconds())
             embed = st["msg"].embeds[0]
-            embed.set_field_at(1, name="المنقضي", value=self._fmt(elapsed), inline=True)
+            embed.set_field_at(2, name="المنقضي", value=self._fmt(elapsed), inline=True)
             await st["msg"].edit(embed=embed)
             await asyncio.sleep(10)
 
