@@ -1,5 +1,2 @@
-# nixpacks.toml
-
 [phases.setup]
-# قبل بايثون: ثبّت ffmpeg (للفك) و libopus (للتشفير)
-packages = ["ffmpeg", "libopus"]
+aptPkgs = ["ffmpeg", "libopus0"]
