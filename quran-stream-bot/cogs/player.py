@@ -1,3 +1,5 @@
+# cogs/player.py
+
 import discord
 import asyncio
 from discord import app_commands
@@ -10,7 +12,7 @@ from datetime import datetime
 from yt_dlp import YoutubeDL
 
 class Player(commands.Cog):
-    """بث تلاوات وقوائم تشغيل مع بحث ديناميكي من داخل /stream."""
+    """بث تلاوات وYouTube Search مع إدارة طابور ثابت وفهرسة وخصائص متقدمة."""
     SEARCH_LIMIT = 5
 
     def __init__(self, bot: commands.Bot):
@@ -19,14 +21,13 @@ class Player(commands.Cog):
         self.dl     = Downloader(self.logger)
         self.states: dict[int, dict] = {}
 
-    # ------------- Helpers -------------
     def _st(self, gid: int):
         return self.states.setdefault(gid, {
-            "playlist": [],   # قائمة المقاطع: dict {url,path,title}
-            "index": -1,      # مؤشر الحالي
-            "vc": None,       # VoiceClient
-            "msg": None,      # رسالة الـEmbed
-            "timer": None,    # مهمة تحديث الوقت
+            "playlist": [],
+            "index": -1,
+            "vc": None,
+            "msg": None,
+            "timer": None,
             "download_task": None
         })
 
@@ -39,39 +40,58 @@ class Player(commands.Cog):
         return inp.startswith("http://") or inp.startswith("https://")
 
     def _yt_search(self, query: str):
-        opts = {"quiet": True, "extract_flat": "in_playlist", "skip_download": True}
+        opts = {
+            "quiet": True,
+            "extract_flat": False,
+            "skip_download": True,
+            "format": "bestaudio/best",
+        }
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(f"ytsearch{self.SEARCH_LIMIT}:{query}", download=False)
-            return [{"url": entry["url"], "title": entry.get("title", "—")} for entry in info["entries"]]
-
-    # ------------- البحث المنبثق (القائمة) -------------
-    class _StreamSelect(discord.ui.Select):
-        def __init__(self, results: list, cog: "Player"):
-            options = [
-                discord.SelectOption(label=r["title"][:100], value=r["url"])
-                for r in results
-            ]
-            super().__init__(
-                placeholder="اختر مقطعًا لإضافته إلى الطابور",
-                min_values=1,
-                max_values=1,
-                options=options
-            )
-            self.cog = cog
-
-        async def callback(self, interaction: discord.Interaction):
-            url = self.values[0]
-            await self.cog._handle_stream(interaction, url)
-            self.disabled = True
-            await interaction.message.edit(view=self.view)
-            self.view.stop()
+            results = []
+            for entry in info["entries"]:
+                duration = entry.get("duration", 0)
+                thumbnail = entry.get("thumbnail")
+                title = entry.get("title", "—")
+                url = f"https://www.youtube.com/watch?v={entry['id']}"
+                results.append({
+                    "url": url,
+                    "title": title,
+                    "duration": self._fmt(duration),
+                    "thumbnail": thumbnail
+                })
+            return results
 
     class _StreamSearchView(discord.ui.View):
         def __init__(self, results, cog: "Player"):
             super().__init__(timeout=60)
-            self.add_item(Player._StreamSelect(results, cog))
+            self.cog = cog
+            self.options = [
+                discord.SelectOption(
+                    label=r["title"][:100],
+                    description=f"⏱️ {r['duration']}",
+                    value=r["url"]
+                )
+                for r in results
+            ]
+            self.add_item(discord.ui.Select(
+                placeholder="اختر مقطعًا لإضافته للطابور",
+                min_values=1,
+                max_values=1,
+                options=self.options
+            ))
 
-    # ------------- Commands -------------
+        @discord.ui.select()
+        async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+            url = select.values[0]
+            await interaction.response.defer(ephemeral=True)  # حل مشكلة interaction failed
+            await self.cog._handle_stream(interaction, url)
+            for child in self.children:
+                child.disabled = True
+            await interaction.message.edit(view=self)
+            self.stop()
+
+    # ----------- أوامر البوت ------------
 
     @app_commands.command(
         name="stream",
@@ -79,7 +99,6 @@ class Player(commands.Cog):
     )
     @app_commands.describe(input="رابط أو كلمات البحث")
     async def stream(self, interaction: discord.Interaction, input: str):
-        # تأكد من أن المستخدم في قناة صوتية
         if not (voice := interaction.user.voice) or not voice.channel:
             return await interaction.response.send_message(
                 "🚫 عليك الانضمام إلى قناة صوتية أولاً.", ephemeral=True
@@ -87,11 +106,10 @@ class Player(commands.Cog):
 
         await interaction.response.defer(thinking=True)
 
-        # إذا كان الرابط يبدأ بـhttp → نتعامل مع stream عادي
         if self._is_url(input):
             return await self._handle_stream(interaction, input)
 
-        # خلاف ذلك → نبحث في YouTube
+        # بحث في YouTube
         results = await asyncio.to_thread(self._yt_search, input)
         if not results:
             return await interaction.followup.send("❌ لم أجد أي نتائج.", ephemeral=True)
@@ -103,7 +121,13 @@ class Player(commands.Cog):
             color=discord.Color.blue()
         )
         for idx, r in enumerate(results, 1):
-            embed.add_field(name=f"{idx}. {r['title']}", value=r["url"], inline=False)
+            embed.add_field(
+                name=f"{idx}. {r['title']}",
+                value=f"[رابط]({r['url']}) - ⏱️ {r['duration']}",
+                inline=False
+            )
+        if results and results[0].get("thumbnail"):
+            embed.set_thumbnail(url=results[0]["thumbnail"])
 
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
@@ -189,10 +213,9 @@ class Player(commands.Cog):
             st["timer"].cancel()
         await interaction.response.send_message("⏹️ تم الإيقاف ومسح الطابور.", ephemeral=True)
 
-    # ---------------- Internal Playback ----------------
+    # ----------- Internal Playback ------------
 
     async def _handle_stream(self, interaction: discord.Interaction, url: str):
-        """منطق إضافة الرابط وتنزيله وتشغيله."""
         st = self._st(interaction.guild_id)
         result = await self.dl.download(url)
         if isinstance(result, list):
@@ -202,11 +225,9 @@ class Player(commands.Cog):
             st["playlist"].append(result)
             await interaction.followup.send("✅ أُضيف للطابور.", ephemeral=True)
 
-        # الإتصال بالصوت إذا لزم
         if not st["vc"] or not st["vc"].is_connected():
             st["vc"] = await interaction.user.voice.channel.connect()
 
-        # بدء التشغيل لأول مرة
         if st["index"] == -1:
             await self._play_current(interaction)
 
@@ -215,39 +236,33 @@ class Player(commands.Cog):
         st["index"] = (st["index"] + 1) % len(st["playlist"])
         elem = st["playlist"][st["index"]]
 
-        # تنزيل إذا لم يكن موجودًا
         if "path" not in elem:
             dl = await self.dl.download(elem["url"])
             elem.update(dl)
 
         path, title = elem["path"], elem["title"]
 
-        # تنزيل مسبق للمقطع التالي
         nxt = st["playlist"][(st["index"] + 1) % len(st["playlist"])]
         if "url" in nxt and "path" not in nxt:
             st["download_task"] = asyncio.create_task(self.dl.download(nxt["url"]))
 
-        # تشغيل
         src = discord.FFmpegOpusAudio(
             path, executable=self.bot.ffmpeg_exe,
             before_options="-nostdin", options="-vn"
         )
         st["vc"].play(src, after=lambda e: self.bot.loop.create_task(self._after(interaction, e)))
 
-        # إعداد Embed
         dur = int(MP3(path).info.length)
         embed = discord.Embed(title=title, color=0x2ecc71)
         embed.set_footer(text=f"المقطع {st['index']+1}/{len(st['playlist'])}")
         embed.add_field(name="المدة", value=self._fmt(dur), inline=True)
 
-        # إرسال أو تعديل الرسالة في القناة
         ch = interaction.channel
         if st["msg"] is None:
             st["msg"] = await ch.send(embed=embed)
         else:
             await st["msg"].edit(embed=embed)
 
-        # جدولة التحديث
         if st["timer"]:
             st["timer"].cancel()
         st["timer"] = self.bot.loop.create_task(self._ticker(interaction.guild_id, dur))
