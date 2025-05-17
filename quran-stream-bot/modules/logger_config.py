@@ -1,28 +1,30 @@
+# modules/logger_config.py
 import logging
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
-def setup_logger(name: str = "quran_bot") -> logging.Logger:
-    """
-    Sets up a logger with console and rotating file handler.
-    """
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True)
 
-    fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    formatter = logging.Formatter(fmt)
+def setup_logger(name: str | None = None) -> logging.Logger:
+    logger = logging.getLogger(name or "quran_bot")
+    logger.setLevel(logging.INFO)
 
-    # Console handler (INFO+)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-
-    # Rotating file handler (DEBUG+)
-    fh = RotatingFileHandler(
-        filename="quran_bot.log", maxBytes=5 * 1024 * 1024, backupCount=5
+    # تدوير الملف: 2 MiB × 3 نسخ احتياطية
+    file_handler = RotatingFileHandler(
+        LOG_DIR / "quran_bot.log",
+        maxBytes=2_000_000,
+        backupCount=3,
+        encoding="utf-8"
     )
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
+    fmt = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    file_handler.setFormatter(logging.Formatter(fmt))
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(logging.Formatter(fmt))
+
+    logger.handlers.clear()
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
 
     return logger
