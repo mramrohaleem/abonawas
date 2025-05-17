@@ -7,7 +7,6 @@ from mutagen.mp3 import MP3
 from datetime import datetime
 from yt_dlp import YoutubeDL
 
-
 class Player(commands.Cog):
     """بث تلاوات – بحث يوتيوب – طابور ثابت مع تحكّم كامل."""
     SEARCH_LIMIT = 5
@@ -78,7 +77,7 @@ class Player(commands.Cog):
             )
 
         async def callback(self, interaction: discord.Interaction):
-            await interaction.response.defer(ephemeral=True)          # <— يمنع “Interaction failed”
+            await interaction.response.defer(ephemeral=True)  # يمنع “Interaction failed”
             await self.cog._handle_stream(interaction, self.values[0])
             # تعطيل القائمة بعد الاختيار
             for child in self.view.children:
@@ -218,13 +217,10 @@ class Player(commands.Cog):
         st = self._st(interaction.guild_id)
         res = await self.dl.download(url)
         if isinstance(res, list):
-            st["playlist"].extend(res)
-            msg = f"📜 أُضيف {len(res)} مقاطع."
+            st["playlist"].extend(res); msg = f"📜 أُضيف {len(res)} مقاطع."
         else:
-            st["playlist"].append(res)
-            msg = "✅ أُضيف المقطع."
+            st["playlist"].append(res);  msg = "✅ أُضيف المقطع."
         await interaction.followup.send(msg, ephemeral=True)
-
         if not st["vc"]:
             st["vc"] = await interaction.user.voice.channel.connect()
         if st["index"] == -1:
@@ -232,18 +228,31 @@ class Player(commands.Cog):
 
     async def _play_current(self, interaction: discord.Interaction):
         st = self._st(interaction.guild_id)
+
+        # ✋ تحقق أولًا: إذا كان الطابور فارغًا، أنهِ التشغيل بلباقة
+        if not st["playlist"]:
+            st["index"] = -1
+            if st["vc"]:
+                await st["vc"].disconnect()
+                st["vc"] = None
+            if st["msg"]:
+                await st["msg"].edit(content="🏁 انتهى الطابور.", embed=None)
+                st["msg"] = None
+            return
+
+        # تدرّج إلى المقطع التالي
         st["index"] = (st["index"] + 1) % len(st["playlist"])
         item = st["playlist"][st["index"]]
 
         if "path" not in item:
             item.update(await self.dl.download(item["url"]))
 
-        # تنزيل المقطع التالي مسبقًا
+        # تنزيل مسبق للمقطع التالي
         nxt = st["playlist"][(st["index"] + 1) % len(st["playlist"])]
         if "url" in nxt and "path" not in nxt:
             st["download_task"] = asyncio.create_task(self.dl.download(nxt["url"]))
 
-        # التشغيل
+        # تشغيل
         src = discord.FFmpegOpusAudio(
             item["path"], executable=self.bot.ffmpeg_exe,
             before_options="-nostdin", options="-vn"
@@ -251,7 +260,7 @@ class Player(commands.Cog):
         st["vc"].play(src, after=lambda e:
                       self.bot.loop.create_task(self._after(interaction, e)))
 
-        # Embed المعلومات
+        # إعداد الـ embed
         dur = int(MP3(item["path"]).info.length)
         embed = discord.Embed(title=item["title"], color=0x2ecc71)
         embed.add_field(name="المدة", value=self._fmt(dur))
@@ -262,7 +271,9 @@ class Player(commands.Cog):
         else:
             await st["msg"].edit(embed=embed)
 
-        if st["timer"]: st["timer"].cancel()
+        # مؤقت للتحديث
+        if st["timer"]:
+            st["timer"].cancel()
         st["timer"] = self.bot.loop.create_task(
             self._ticker(interaction.guild_id, dur))
 
@@ -285,7 +296,6 @@ class Player(commands.Cog):
                                 value=self._fmt(elapsed))
             await st["msg"].edit(embed=embed)
             await asyncio.sleep(10)
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Player(bot))
