@@ -1,83 +1,89 @@
-import os
-import asyncio
-import aiohttp
+# modules/downloader.py
+import asyncio, hashlib, os, time
 from pathlib import Path
+from typing import List, Dict, Union
 from yt_dlp import YoutubeDL, DownloadError
-from imageio_ffmpeg import get_ffmpeg_exe
+from .logger_config import setup_logger
 
-FFMPEG_PATH   = get_ffmpeg_exe()
-DOWNLOADS_DIR = Path("downloads")
-DOWNLOADS_DIR.mkdir(exist_ok=True)
+DOWNLOAD_DIR = Path("downloads")
+DOWNLOAD_DIR.mkdir(exist_ok=True)
 
-COOKIE_FILE = Path(os.getenv("YT_COOKIES", "cookies.txt"))
+logger = setup_logger(__name__)
+
+def _sha(name: str) -> str:
+    """مسار الملف باسم SHA-256 للـ URL"""
+    return hashlib.sha256(name.encode()).hexdigest() + ".mp3"
+
+def clean_old(days: int = 7) -> None:
+    """حذف الملفات الأقدم من عدد الأيام المحدّد."""
+    now = time.time()
+    limit = days * 86_400
+    for p in DOWNLOAD_DIR.glob("*.mp3"):
+        if now - p.stat().st_mtime > limit:
+            try:
+                p.unlink()
+                logger.info(f"🗑️ حذف {p.name}")
+            except Exception as e:
+                logger.warning(f"تعذّر حذف {p}: {e}")
 
 class Downloader:
-    """ينزّل MP3 مباشر أو يستخرج الصوت من YouTube/Playlist."""
-    def __init__(self, logger):
-        self.logger = logger
-
-    async def download(self, url: str):
-        if url.lower().endswith(".mp3"):
-            return await self._http_download(url)
-        # yt-dlp قد يستغرق وقتًا، لذا في thread منفصل
-        return await asyncio.to_thread(self._ytdlp_download, url)
-
-    async def _http_download(self, url: str) -> dict:
-        filename = url.split("/")[-1].split("?")[0] or "file.mp3"
-        path = DOWNLOADS_DIR / filename
-        if path.exists():
-            self.logger.info(f"🎧 موجود في الكاش: {path}")
-            return {"path": str(path), "title": path.name}
-
-        self.logger.info(f"⬇️ تنزيل مباشر: {url}")
-        async with aiohttp.ClientSession() as sess, sess.get(url) as resp:
-            resp.raise_for_status()
-            with open(path, "wb") as f:
-                while chunk := await resp.content.read(16*1024):
-                    f.write(chunk)
-        self.logger.info(f"✅ حُفظ: {path}")
-        return {"path": str(path), "title": path.name}
-
-    def _ytdlp_download(self, url: str):
-        base_opts = {
+    """تنزيل (أو إعادة استخدام) ملفّ صوتي."""
+    def __init__(self, _logger=None):
+        self.log = _logger or logger
+        self.ytdl_opts = {
             "quiet": True,
-            "no_warnings": True,
-            "geo_bypass": True,
-            "ffmpeg_location": FFMPEG_PATH,
-        }
-
-        # Playlist؟
-        if "list=" in url and "watch?" not in url:
-            opts = {**base_opts, "extract_flat": "in_playlist", "skip_download": True}
-            with YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                lst = [{"url": e["url"], "title": e.get("title", "—")} for e in info["entries"]]
-                self.logger.info(f"📜 وجد قائمة تشغيل بحجم {len(lst)}")
-                return lst  # قائمة URLs+titles
-
-        # فيديو واحد
-        opts = {
-            **base_opts,
             "format": "bestaudio/best",
-            "outtmpl": "downloads/%(id)s.%(ext)s",
-            "noplaylist": True,
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
+            "outtmpl": str(DOWNLOAD_DIR / "%(id)s.%(ext)s"),
+            "postprocessors": [{"key": "FFmpegExtractAudio",
+                                "preferredcodec": "mp3",
+                                "preferredquality": "192"}],
+            "nocheckcertificate": True,
+            "noplaylist": False,
+            "cookiefile": "cookies.txt",
         }
-        if COOKIE_FILE.exists():
-            opts["cookiefile"] = str(COOKIE_FILE)
-            self.logger.info("🍪 يستخدم cookies.txt")
+
+    async def download(self, url: str) -> Union[Dict, List[Dict]]:
+        """يُعيد dict واحد أو list[dict] لقائمة تشغيل."""
+        # اسم الملف بحسب الـ SHA لتجنّب التكرار
+        dest = DOWNLOAD_DIR / _sha(url)
+
+        if dest.exists():
+            self.log.info(f"♻️ استخدام ملفّ موجود: {dest.name}")
+            return {"path": str(dest), "title": dest.stem, "url": url}
 
         try:
-            with YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                mp3_path = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
-                title = info.get("title") or mp3_path.name
-                self.logger.info(f"🎵 تم تنزيل: {mp3_path}")
-                return {"path": str(mp3_path), "title": title}
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(None, self._yt, url)
         except DownloadError as e:
-            self.logger.error(f"❌ yt-dlp خطأ: {e}")
-            raise RuntimeError("فشل تحميل الرابط.") from e
+            self.log.error(f"yt-dlp error: {e}")
+            raise
+
+        if isinstance(info, list):      # Playlist
+            return info
+
+        # ملفّ واحد
+        os.replace(info["filepath"], dest)
+        info["path"] = str(dest)
+        self.log.info(f"🎵 تم تنزيل: {dest}")
+
+        return info
+
+    # ---------- private ---------- #
+    def _yt(self, url: str):
+        with YoutubeDL(self.ytdl_opts) as ydl:
+            data = ydl.extract_info(url, download=True)
+
+        if "_type" in data and data["_type"] == "playlist":
+            res = []
+            for entry in data["entries"]:
+                res.append({
+                    "url": f"https://youtu.be/{entry['id']}",
+                    "title": entry.get("title", "—")
+                })
+            return res
+
+        return {
+            "title":    data.get("title", "—"),
+            "filepath": ydl.prepare_filename(data),   # قبل التغيير إلى dest
+            "url":      url
+        }
