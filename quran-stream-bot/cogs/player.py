@@ -197,5 +197,18 @@ class Player(commands.Cog):
             await st["msg"].edit(embed=embed)
             await asyncio.sleep(10)
 
+    async def stream_callback(self, interaction: discord.Interaction, url: str):
+        """يُستدعى من SearchView لإضافة الرابط وتشغيله."""
+        st = self._st(interaction.guild_id)
+        result = await self.dl.download(url)
+        st["playlist"].append(result)
+        await interaction.followup.send("✅ أُضيف للمقطوعات.", ephemeral=True)
+        if not st["vc"] or not st["vc"].is_connected():
+            if interaction.user.voice and interaction.user.voice.channel:
+                st["vc"] = await interaction.user.voice.channel.connect()
+        if st["index"] == -1:
+            await self._play_current(interaction)
+
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(Player(bot))
