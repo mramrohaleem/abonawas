@@ -1,5 +1,3 @@
-# cogs/player.py
-
 import discord
 import asyncio
 from discord import app_commands
@@ -12,7 +10,7 @@ from datetime import datetime
 from yt_dlp import YoutubeDL
 
 class Player(commands.Cog):
-    """بث تلاوات وYouTube Search وإدارة طابور ثابت مع فهرسة."""
+    """بث تلاوات وقوائم تشغيل مع بحث ديناميكي من داخل /stream."""
     SEARCH_LIMIT = 5
 
     def __init__(self, bot: commands.Bot):
@@ -21,14 +19,14 @@ class Player(commands.Cog):
         self.dl     = Downloader(self.logger)
         self.states: dict[int, dict] = {}
 
-    # ---------------- Helpers ----------------
+    # ------------- Helpers -------------
     def _st(self, gid: int):
         return self.states.setdefault(gid, {
-            "playlist": [],   # list[dict{url?,path?,title}]
-            "index": -1,      # المؤشر الحالي 0-based
+            "playlist": [],   # قائمة المقاطع: dict {url,path,title}
+            "index": -1,      # مؤشر الحالي
             "vc": None,       # VoiceClient
-            "msg": None,      # discord.Message للـEmbed
-            "timer": None,    # asyncio.Task لتحديث الوقت
+            "msg": None,      # رسالة الـEmbed
+            "timer": None,    # مهمة تحديث الوقت
             "download_task": None
         })
 
@@ -44,34 +42,36 @@ class Player(commands.Cog):
         opts = {"quiet": True, "extract_flat": "in_playlist", "skip_download": True}
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(f"ytsearch{self.SEARCH_LIMIT}:{query}", download=False)
-            return [{"url": e["url"], "title": e.get("title","—")} for e in info["entries"]]
+            return [{"url": entry["url"], "title": entry.get("title", "—")} for entry in info["entries"]]
 
-    class _StreamSearchView(discord.ui.View):
-        def __init__(self, results, cog: "Player"):
-            super().__init__(timeout=60)
-            self.cog = cog
+    # ------------- البحث المنبثق (القائمة) -------------
+    class _StreamSelect(discord.ui.Select):
+        def __init__(self, results: list, cog: "Player"):
             options = [
                 discord.SelectOption(label=r["title"][:100], value=r["url"])
                 for r in results
             ]
-            self.add_item(discord.ui.Select(
-                placeholder="اختر مقطعًا لإضافته للطابور",
+            super().__init__(
+                placeholder="اختر مقطعًا لإضافته إلى الطابور",
                 min_values=1,
                 max_values=1,
                 options=options
-            ))
+            )
+            self.cog = cog
 
-        @discord.ui.select()
-        async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
-            url = select.values[0]
+        async def callback(self, interaction: discord.Interaction):
+            url = self.values[0]
             await self.cog._handle_stream(interaction, url)
-            # تعطيل القائمة بعد الاختيار
-            for child in self.children:
-                child.disabled = True
-            await interaction.message.edit(view=self)
-            self.stop()
+            self.disabled = True
+            await interaction.message.edit(view=self.view)
+            self.view.stop()
 
-    # ---------------- Commands ----------------
+    class _StreamSearchView(discord.ui.View):
+        def __init__(self, results, cog: "Player"):
+            super().__init__(timeout=60)
+            self.add_item(Player._StreamSelect(results, cog))
+
+    # ------------- Commands -------------
 
     @app_commands.command(
         name="stream",
