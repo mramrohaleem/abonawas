@@ -7,6 +7,7 @@ from discord.ext import commands
 from modules.logger_config import setup_logger
 from imageio_ffmpeg import get_ffmpeg_exe
 from cogs.player import Player
+from cogs.search import Search
 
 logger = setup_logger()
 
@@ -21,20 +22,26 @@ class QuranBot(commands.Bot):
         self.ffmpeg_exe = ffmpeg_exe
 
     async def setup_hook(self):
+        # إضافة Cogs
         await self.add_cog(Player(self))
+        await self.add_cog(Search(self))
+
+        # مزامنة أوامر السلاش
         await self.tree.sync()
-        logger.info("Synced slash commands")
+        logger.info("✅ Synced slash commands")
+
+        # تأكيد التحميل في الـ logs
+        logger.info(f"Loaded Cogs: {list(self.cogs.keys())}")
+        logger.info(f"Slash Commands: {[cmd.name for cmd in self.tree.walk_commands()]}")
+
+    async def on_ready(self):
+        logger.info(f"🟢 Logged in as {self.user} (ID: {self.user.id})")
 
 async def main():
     bot = QuranBot()
-
-    @bot.event
-    async def on_ready():
-        logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
-
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        logger.error("DISCORD_TOKEN not set.")
+        logger.error("❌ DISCORD_TOKEN not set.")
         return
 
     await bot.start(token)
