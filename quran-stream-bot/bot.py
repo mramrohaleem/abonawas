@@ -1,4 +1,4 @@
-# bot.py
+# bot.py  –  نقطة تشغيل البوت بعد إزالة Cog البحث المنفصل
 
 import os
 import asyncio
@@ -6,8 +6,7 @@ import discord
 from discord.ext import commands
 from modules.logger_config import setup_logger
 from imageio_ffmpeg import get_ffmpeg_exe
-from cogs.player import Player
-from cogs.search import Search
+from cogs.player import Player   # لم يَعُد هناك Search cog
 
 logger = setup_logger()
 
@@ -17,20 +16,19 @@ logger.info(f"Using ffmpeg executable at: {ffmpeg_exe}")
 class QuranBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.voice_states = True
+        intents.voice_states = True            # مطلوب لقنوات الصوت
         super().__init__(command_prefix="!", intents=intents)
         self.ffmpeg_exe = ffmpeg_exe
 
     async def setup_hook(self):
-        # إضافة Cogs
+        # تحميل الـPlayer Cog الوحيد
         await self.add_cog(Player(self))
-        await self.add_cog(Search(self))
 
-        # مزامنة أوامر السلاش
+        # مزامنة أوامر الـSlash مع التطبيق
         await self.tree.sync()
         logger.info("✅ Synced slash commands")
 
-        # تأكيد التحميل في الـ logs
+        # طباعة للتأكد من التحميل
         logger.info(f"Loaded Cogs: {list(self.cogs.keys())}")
         logger.info(f"Slash Commands: {[cmd.name for cmd in self.tree.walk_commands()]}")
 
