@@ -3,28 +3,22 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR = Path("logs"); LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "quran_bot.log"
 
-def setup_logger(name: str | None = None) -> logging.Logger:
-    logger = logging.getLogger(name or "quran_bot")
+def setup_logger(name: str = "quran_bot") -> logging.Logger:
+    logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
-    # تدوير الملف: 2 MiB × 3 نسخ احتياطية
-    file_handler = RotatingFileHandler(
-        LOG_DIR / "quran_bot.log",
-        maxBytes=2_000_000,
-        backupCount=3,
-        encoding="utf-8"
-    )
-    fmt = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-    file_handler.setFormatter(logging.Formatter(fmt))
+    # تدوير الملف عند 5 MB (يحتفظ بـ 3 ملفات قديمة)
+    file_hdl = RotatingFileHandler(LOG_FILE, maxBytes=5_000_000, backupCount=3,
+                                   encoding="utf-8")
+    file_hdl.setFormatter(logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(name)s - %(message)s"))
+    stream_hdl = logging.StreamHandler()
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(logging.Formatter(fmt))
-
-    logger.handlers.clear()
-    logger.addHandler(file_handler)
-    logger.addHandler(stream_handler)
+    for h in (file_hdl, stream_hdl):
+        h.setLevel(logging.INFO)
+        logger.addHandler(h)
 
     return logger
