@@ -1,75 +1,77 @@
 # modules/downloader.py
-import hashlib, asyncio, shutil
+import hashlib
+import os
 from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Any
-from yt_dlp import YoutubeDL
-from imageio_ffmpeg import get_ffmpeg_exe
+from typing import Dict, List, Union
 
-CACHE_DIR   = Path("downloads"); CACHE_DIR.mkdir(exist_ok=True)
-RETENTION_DAYS = 10              # احذف الملفات الأقدم من هذا العدد
-PARALLEL_DOWNLOADS = 2           # أقصى تنزيلات متزامنة
+from imageio_ffmpeg import get_ffmpeg_exe
+from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
+
+from modules.logger_config import setup_logger
+
+Media = Dict[str, str]              # {"url", "title", "path"}
+MediaOrPlaylist = Union[Media, List[Media]]
+
 
 class Downloader:
-    """تنزيل mp3 مع كاش مبني على SHA-256(link)."""
+    """
+    أداة تنزيل صوت (فيديوهات YouTube / Facebook / …) باستخدام yt-dlp.
+    ترجع dict واحدة أو قائمة dicts عند قوائم التشغيل.
+    """
+    def __init__(self, logger=None, download_dir: str = "downloads"):
+        self.logger = logger or setup_logger(__name__)
+        self.download_dir = Path(download_dir)
+        self.download_dir.mkdir(exist_ok=True)
+        self.ffmpeg_exe = get_ffmpeg_exe()
 
-    _sem = asyncio.Semaphore(PARALLEL_DOWNLOADS)
+    # ---------- واجهة عامّة ----------
+    async def download(self, url: str) -> MediaOrPlaylist:
+        try:
+            info = self._extract(url)
+        except RuntimeError:
+            raise                                          # أعد تمرير الخطأ إلى Player
 
-    def __init__(self, logger):
-        self.logger = logger
-        self.ffmpeg = get_ffmpeg_exe()
-        asyncio.create_task(self._cleanup_old())
+        if info.get("_type") == "playlist":
+            return [self._build_media(e) for e in info["entries"]]
 
-    # -------------------------------------------- #
+        return self._build_media(info)
 
-    async def download(self, url: str) -> dict[str, Any]:
-        h = hashlib.sha256(url.encode()).hexdigest()[:16]
-        mp3_path = CACHE_DIR / f"{h}.mp3"
-        if mp3_path.exists():
-            self.logger.info(f"🎵 استخدم الكاش: {mp3_path}")
-            return {"url": url, "path": str(mp3_path), "title": mp3_path.stem}
-
-        async with self._sem:           # حدّ التوازي
-            return await asyncio.to_thread(self._ydl_fetch, url, mp3_path)
-
-    # -------------------------------------------- #
-
-    def _ydl_fetch(self, url: str, mp3_path: Path):
-        opts = {
+    # ---------- داخلي ----------
+    def _extract(self, url: str) -> dict:
+        ydl_opts = {
+            "quiet": True,
             "format": "bestaudio/best",
-            "outtmpl": str(mp3_path.with_suffix(".%(ext)s")),
-            "quiet":   True,
-            "ffmpeg_location": self.ffmpeg,
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
+            "ffmpeg_location": self.ffmpeg_exe,
+            "outtmpl": str(self.download_dir / "%(id)s.%(ext)s"),
+            "cachedir": False,
+            # يسمح بإسقاط الفيديو إن كان Audio فقط غير متاح
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}],
         }
         try:
-            with YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                title = info.get("title") or mp3_path.stem
-            # yt-dl سيحفظ باسم temp.ext ثم يُعيد تسميته؛ نتأكّد من الاسم النهائي
-            real_file = next(mp3_path.parent.glob(f"{mp3_path.stem}.*"))
-            if real_file.suffix != ".mp3":
-                real_file.rename(mp3_path)
-            self.logger.info(f"🎵 تم تنزيل: {mp3_path}")
-            return {"url": url, "path": str(mp3_path), "title": title}
-        except Exception as e:
-            self.logger.error(f"yt-dlp error: {e}", exc_info=True)
-            raise
+            with YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
+        except DownloadError as exc:
+            self.logger.error(f"yt-dlp error: {exc}", exc_info=True)
+            raise RuntimeError("المقطع غير متاح أو محجوب")
 
-    # -------------------------------------------- #
+    # اختيار الملفّ الصوتي الناتج
+    def _choose_audio_path(self, info: dict) -> str:
+        # yt-dlp يضع المسار في requested_downloads[0]
+        path = info.get("requested_downloads", [{}])[0].get("filepath")
+        if path:
+            return path
+        # fallback: ابحث في مجلد التنزيل باسم id.*‎
+        stem = info["id"]
+        for ext in ("mp3", "m4a", "webm", "opus"):
+            p = self.download_dir / f"{stem}.{ext}"
+            if p.exists():
+                return str(p)
+        raise RuntimeError("تعذّر إيجاد الملف الصوتي بعد التنزيل")
 
-    async def _cleanup_old(self):
-        """يحذف الملفات الأقدم من RETENTION_DAYS مرة واحدة عند الإقلاع."""
-        threshold = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
-        removed = 0
-        for f in CACHE_DIR.glob("*.mp3"):
-            if datetime.utcfromtimestamp(f.stat().st_mtime) < threshold:
-                try:
-                    f.unlink(); removed += 1
-                except OSError: pass
-        if removed:
-            self.logger.info(f"🧹 حُذف {removed} ملفًا قديمًا من الكاش")
+    def _build_media(self, info: dict) -> Media:
+        return {
+            "url": info.get("original_url") or info.get("webpage_url"),
+            "title": info.get("title") or "—",
+            "path": self._choose_audio_path(info)
+        }
