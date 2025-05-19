@@ -52,6 +52,35 @@ class Player(commands.Cog):
     def _is_url(text: str) -> bool:
         return bool(_RX_URL.match(text or ""))
 
+    # ---------- التأكد من الاتصال الصوتي ---------- #
+    async def _ensure_voice(self, interaction: discord.Interaction) -> bool:
+        """
+        يحاول إبقاء الـ VoiceClient متصلاً. يرجع True إذا أصبح متصلاً،
+        وإلا False (مثلاً إن لم يكن المستخدم في أي قناة).
+        """
+        st = self._st(interaction.guild_id)
+
+        # ما زال متصلاً وسليم؟
+        if st.vc and st.vc.is_connected():
+            return True
+
+        # القناة التي يجب أن نتصل بها:
+        channel: discord.VoiceChannel | None = None
+        if interaction.user.voice and interaction.user.voice.channel:
+            channel = interaction.user.voice.channel
+        elif st.vc:                         # أعد محاولة الاتصال بنفس القناة السابقة
+            channel = st.vc.channel         # type: ignore
+
+        if not channel:
+            return False                    # لا توجد قناة يمكن الاتصال بها
+
+        try:
+            st.vc = await channel.connect()
+            return True
+        except discord.ClientException as e:
+            self.logger.warning(f"تعذّر الاتصال بالصوت: {e}")
+            return False
+
     # ---------- البحث فى يوتيوب / فيسبوك ---------- #
     async def _yt_search(self, query: str) -> list[dict]:
         from yt_dlp import YoutubeDL
@@ -132,8 +161,8 @@ class Player(commands.Cog):
 
         st.index = -1
         await interaction.followup.send(f"📜 تم تحميل قائمة **{name}**.", ephemeral=True)
-        await self._ensure_voice(interaction)
-        await self._play_current(interaction)
+        if await self._ensure_voice(interaction):
+            await self._play_current(interaction)
 
     # ════════════════════════════════════════════════
     #                    /stream
@@ -267,6 +296,7 @@ class Player(commands.Cog):
         if st.vc:
             st.vc.stop()
             await st.vc.disconnect()
+            st.vc = None           # <— مسح المرجع لمنع استعماله لاحقًا
         if st.timer:
             st.timer.cancel()
         await interaction.response.send_message("⏹️ توقّف كل شيء.", ephemeral=True)
@@ -274,11 +304,6 @@ class Player(commands.Cog):
     # ═══════════════════════════════════════
     #           تشغيل داخلى
     # ═══════════════════════════════════════
-    async def _ensure_voice(self, interaction: discord.Interaction):
-        st = self._st(interaction.guild_id)
-        if not st.vc:
-            st.vc = await interaction.user.voice.channel.connect()
-
     async def _handle_stream(self, interaction: discord.Interaction, url: str):
         st = self._st(interaction.guild_id)
         try:
@@ -294,14 +319,18 @@ class Player(commands.Cog):
             msg = "✅ أضيف المقطع."
 
         await interaction.followup.send(msg, ephemeral=True)
-        await self._ensure_voice(interaction)
-        if st.index == -1:
-            await self._play_current(interaction)
+        if await self._ensure_voice(interaction):
+            if st.index == -1:
+                await self._play_current(interaction)
 
     async def _play_current(self, interaction: discord.Interaction):
         st = self._st(interaction.guild_id)
         if not st.playlist:
             st.index = -1
+            return
+
+        # تأكّد أننا متصلون قبل اللعب
+        if not await self._ensure_voice(interaction):
             return
 
         st.index = (st.index + 1) % len(st.playlist)
@@ -353,7 +382,9 @@ class Player(commands.Cog):
     async def _after(self, interaction: discord.Interaction, err):
         if err:
             self.logger.error("FFmpeg/Playback Error", exc_info=True)
-        await self._play_current(interaction)
+        # جرّب إعادة الاتصال لو انقطع
+        if await self._ensure_voice(interaction):
+            await self._play_current(interaction)
 
     async def _ticker(self, gid: int):
         st = self._st(gid)
