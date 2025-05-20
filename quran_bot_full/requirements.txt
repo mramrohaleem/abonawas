@@ -1,7 +1,0 @@
-
-discord.py[voice]>=2.5
-yt-dlp>=2025.4
-imageio-ffmpeg
-mutagen
-aiohttp
-apscheduler
